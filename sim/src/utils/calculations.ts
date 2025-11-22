@@ -27,10 +27,35 @@ export function calculateSpreadBounds(
  */
 export function calculateDynamicSpread(
   params: SequencerParameters,
+  midPrice: number,
+  confidence?: number,
   volatility: number = 0
 ): number {
   const { spreadRange, correlationFactor } = params;
 
+  // If we have confidence data, use the new logic
+  if (confidence !== undefined && midPrice > 0) {
+    // 1. Calculate Pyth Spread (bps)
+    // Ratio of confidence interval to price, multiplied by 10,000
+    const pythSpreadBps = (confidence / midPrice) * 10000;
+
+    // 2. Calculate User Mean Spread (center point of min & max)
+    const userMeanSpread = (spreadRange.min + spreadRange.max) / 2;
+
+    // 3. Calculate Composite Spread (weighted by correlation factor)
+    // Correlation factor defines how much to depend on Pyth spread
+    const compositeSpread =
+      correlationFactor * pythSpreadBps +
+      (1 - correlationFactor) * userMeanSpread;
+
+    // 4. Clip final value between spread range
+    return Math.max(
+      spreadRange.min,
+      Math.min(spreadRange.max, compositeSpread)
+    );
+  }
+
+  // Fallback logic when no confidence data is available
   // Base spread interpolation
   const baseSpread =
     spreadRange.min + (spreadRange.max - spreadRange.min) * correlationFactor;
@@ -76,7 +101,12 @@ export function generatePriceDataPoint(
   volatility: number = 0,
   confidence?: number
 ): PriceDataPoint {
-  const spreadBps = calculateDynamicSpread(params, volatility);
+  const spreadBps = calculateDynamicSpread(
+    params,
+    midPrice,
+    confidence,
+    volatility
+  );
   const { upper, lower } = calculateSpreadBounds(midPrice, spreadBps);
 
   return {

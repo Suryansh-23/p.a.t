@@ -11,6 +11,7 @@ import {
 
 export class PriceSimulator {
   private currentPrice: number;
+  private currentConfidence?: number;
   private volatility: number;
   private drift: number;
   private pythService?: PythPriceService;
@@ -48,6 +49,7 @@ export class PriceSimulator {
       // Subscribe to real Pyth price updates
       return this.pythService.subscribe((data: NormalizedPriceData) => {
         this.currentPrice = data.price;
+        this.currentConfidence = data.confidence;
         callback(data.price, data.timestamp, data.confidence);
       });
     }
@@ -92,6 +94,7 @@ export class PriceSimulator {
     const priceData = await this.pythService.getLatestPrice();
     if (priceData) {
       this.currentPrice = priceData.price;
+      this.currentConfidence = priceData.confidence;
       return priceData.price;
     }
 
@@ -103,6 +106,13 @@ export class PriceSimulator {
    */
   getCurrentPrice(): number {
     return this.currentPrice;
+  }
+
+  /**
+   * Get current confidence interval
+   */
+  getCurrentConfidence(): number | undefined {
+    return this.currentConfidence;
   }
 
   /**

@@ -305,6 +305,7 @@ export class App {
    */
   private renderSpreadInfo(): string {
     const currentPrice = this.priceSimulator.getCurrentPrice();
+    const currentConfidence = this.priceSimulator.getCurrentConfidence();
     const params = this.state.parameters;
 
     // Generate current data point
@@ -312,7 +313,8 @@ export class App {
       Date.now(),
       currentPrice,
       params,
-      0
+      0,
+      currentConfidence
     );
 
     const upperChange = (
@@ -345,6 +347,13 @@ export class App {
 {bold}{white-fg}Current Price:{/white-fg} {cyan-fg}${dataPoint.midPrice.toFixed(
       2
     )}{/cyan-fg}{/bold}
+${
+  currentConfidence !== undefined
+    ? `{white-fg}Conf. Interval:{/white-fg} {yellow-fg}±${currentConfidence.toFixed(
+        4
+      )}{/yellow-fg}`
+    : ""
+}
 
 {magenta-fg}Upper Spread:{/magenta-fg} {yellow-fg}${dataPoint.upperBound.toFixed(
       4
