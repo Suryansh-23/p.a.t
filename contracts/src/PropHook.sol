@@ -16,8 +16,10 @@ import {
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
+
 import {BaseStrategyAdapter} from "@adapters/base/BaseStrategyAdapter.sol";
 import {BaseThresholdAdapter} from "@adapters/base/BaseThresholdAdapter.sol";
+import {ISwapHandler} from "@interfaces/ISwapHandler.sol";
 
 /// @title PropHook - Proprietary AMM with Strategy-Based Pricing
 /// @notice Hook enabling market makers to launch proprietary pools with custom pricing strategies
@@ -38,15 +40,6 @@ contract PropHook is BaseHook {
         bool initialized; // Whether pool config is set
     }
 
-    /// @notice Pending swap request from user (before TEE batch execution)
-    struct PendingSwap {
-        address user;
-        bool zeroForOne;
-        int256 amountSpecified;
-        uint256 timestamp;
-        bool executed;
-    }
-
     ////////////////////////////////////////////////////
     ////////////////////// State ///////////////////////
     ////////////////////////////////////////////////////
@@ -63,26 +56,15 @@ contract PropHook is BaseHook {
     /// @notice Authorized swap handler (TEE)
     address public swapHandler;
 
-    /// @notice Pending swaps by pool and nonce
-    mapping(bytes32 => mapping(uint256 => PendingSwap)) public pendingSwaps;
-
-    /// @notice Swap nonce counter per pool
-    mapping(bytes32 => uint256) public swapNonce;
-
-    /// @notice Locked tokens per user per pool per currency
-    mapping(address => mapping(bytes32 => mapping(Currency => uint256))) public lockedTokens;
-
     ////////////////////////////////////////////////////
     ////////////////////// Errors //////////////////////
     ////////////////////////////////////////////////////
 
-    error PropHook__InvalidLiquidityAmount();
     error PropHook__InsufficientHookReserves();
     error PropHook__PoolNotConfigured();
     error PropHook__InvalidStrategyAdapter();
     error PropHook__Unauthorized();
     error PropHook__InsufficientReserves();
-    error PropHook__SwapHandlerNotSet();
 
     ////////////////////////////////////////////////////
     ////////////////////// Events //////////////////////
@@ -91,28 +73,20 @@ contract PropHook is BaseHook {
     event PoolConfigured(PoolId indexed poolId, address strategyAdapter, address thresholdAdapter);
     event LaunchpadSet(address indexed launchpad);
     event SwapHandlerSet(address indexed swapHandler);
-    event SwapRequested(
-        PoolId indexed poolId,
-        address indexed user,
-        bool zeroForOne,
-        int256 amountSpecified,
-        uint256 timestamp,
-        uint256 indexed nonce
-    );
+    event SwapRequested(PoolId indexed poolId, address sender, bool zeroForOne, int256 amountSpecified);
     event SwapExecutedByTEE(PoolId indexed poolId, bool zeroForOne, int256 amountSpecified, uint256 price);
-    event BatchExecuted(PoolId indexed poolId, uint256 swapCount, uint256 timestamp);
 
     ////////////////////////////////////////////////////
     ////////////////////// Modifiers ///////////////////
     ////////////////////////////////////////////////////
 
     modifier onlyLaunchpad() {
-        if (msg.sender != launchpad) revert PropHook__Unauthorized();
+        _checkLaunchpad();
         _;
     }
 
     modifier onlySwapHandler() {
-        if (msg.sender != swapHandler) revert PropHook__Unauthorized();
+        _checkSwapHandler();
         _;
     }
 
@@ -296,76 +270,9 @@ contract PropHook is BaseHook {
         reserve1 = hookReserves[poolId][key.currency1];
     }
 
-    /// @notice Get current price from strategy adapter
-    /// @param key The pool key
-    /// @return price The current price (scaled by 1e18)
-    function getCurrentPrice(PoolKey calldata key) external returns (uint256 price) {
-        bytes32 poolId = PoolId.unwrap(key.toId());
-        PoolConfig memory config = poolConfigs[poolId];
-
-        if (!config.initialized) revert PropHook__PoolNotConfigured();
-
-        uint256 reserve0 = hookReserves[poolId][key.currency0];
-        uint256 reserve1 = hookReserves[poolId][key.currency1];
-
-        price = BaseStrategyAdapter(config.strategyAdapter)
-            .price(
-                abi.encode(reserve0, reserve1, true) // true = zeroForOne for price quote
-            );
-    }
-
-    /// @notice Check if threshold is reached for a pool
-    function isThresholdReached(PoolKey calldata key) external returns (bool) {
-        bytes32 poolId = PoolId.unwrap(key.toId());
-        PoolConfig memory config = poolConfigs[poolId];
-
-        if (config.thresholdAdapter == address(0)) return false;
-
-        uint256 reserve0 = hookReserves[poolId][key.currency0];
-        uint256 reserve1 = hookReserves[poolId][key.currency1];
-
-        return BaseThresholdAdapter(config.thresholdAdapter).theresholdReached(abi.encode(reserve0, reserve1));
-    }
-
-    /// @notice Get pending swap details
-    function getPendingSwap(PoolKey calldata key, uint256 nonce) external view returns (PendingSwap memory) {
-        bytes32 poolId = PoolId.unwrap(key.toId());
-        return pendingSwaps[poolId][nonce];
-    }
-
-    /// @notice Get current swap nonce for a pool
-    function getCurrentNonce(PoolKey calldata key) external view returns (uint256) {
-        bytes32 poolId = PoolId.unwrap(key.toId());
-        return swapNonce[poolId];
-    }
-
     ////////////////////////////////////////////////////
     ///////////// SwapHandler Functions ////////////////
     ////////////////////////////////////////////////////
-
-    /// @notice Mark swaps as executed (called by SwapHandler after batch execution)
-    /// @dev Only SwapHandler can call this
-    function markSwapsExecuted(PoolKey calldata key, uint256[] calldata nonces) external onlySwapHandler {
-        bytes32 poolId = PoolId.unwrap(key.toId());
-
-        for (uint256 i = 0; i < nonces.length; i++) {
-            pendingSwaps[poolId][nonces[i]].executed = true;
-        }
-
-        emit BatchExecuted(key.toId(), nonces.length, block.timestamp);
-    }
-
-    /// @notice Update strategy adapter parameters (called by SwapHandler)
-    /// @dev Only SwapHandler can call this to update pricing
-    function updateStrategyParams(PoolKey calldata key, bytes calldata params) external onlySwapHandler {
-        bytes32 poolId = PoolId.unwrap(key.toId());
-        PoolConfig memory config = poolConfigs[poolId];
-
-        if (!config.initialized) revert PropHook__PoolNotConfigured();
-
-        // Update strategy parameters
-        BaseStrategyAdapter(config.strategyAdapter).update(params);
-    }
 
     /// @notice Before swap - handles both user requests and TEE batch execution
     /// @dev Regular users: swap request queued for TEE batch
@@ -386,8 +293,7 @@ contract PropHook is BaseHook {
             // TEE batch execution - execute swap normally
             return _executeSwapForTEE(poolId, key, config, params);
         } else {
-            // Regular user - queue swap request for TEE batch
-            return _queueUserSwap(poolId, key, sender, params);
+            emit SwapRequested(key.toId(), sender, params.zeroForOne, params.amountSpecified);
         }
     }
 
@@ -402,9 +308,13 @@ contract PropHook is BaseHook {
         uint256 reserve0 = hookReserves[poolId][key.currency0];
         uint256 reserve1 = hookReserves[poolId][key.currency1];
 
-        // Get price from strategy adapter
-        uint256 price =
-            BaseStrategyAdapter(config.strategyAdapter).price(abi.encode(reserve0, reserve1, params.zeroForOne));
+        // Get price from strategy adapter with swap direction and amount
+        uint256 price = BaseStrategyAdapter(config.strategyAdapter)
+            .price(
+                ISwapHandler.SwapData({
+                    sender: msg.sender, zeroForOne: params.zeroForOne, amountSpecified: params.amountSpecified
+                })
+            );
 
         // Calculate swap amounts based on strategy price
         BeforeSwapDelta beforeSwapDelta =
@@ -416,31 +326,6 @@ contract PropHook is BaseHook {
         emit SwapExecutedByTEE(key.toId(), params.zeroForOne, params.amountSpecified, price);
 
         return (IHooks.beforeSwap.selector, beforeSwapDelta, 0);
-    }
-
-    /// @notice Queue user swap request for TEE batch processing
-    function _queueUserSwap(bytes32 poolId, PoolKey calldata key, address user, SwapParams calldata params)
-        internal
-        returns (bytes4, BeforeSwapDelta, uint24)
-    {
-        // Get next nonce
-        uint256 nonce = swapNonce[poolId]++;
-
-        // Store pending swap
-        pendingSwaps[poolId][nonce] = PendingSwap({
-            user: user,
-            zeroForOne: params.zeroForOne,
-            amountSpecified: params.amountSpecified,
-            timestamp: block.timestamp,
-            executed: false
-        });
-
-        // Emit event for TEE to catch
-        emit SwapRequested(key.toId(), user, params.zeroForOne, params.amountSpecified, block.timestamp, nonce);
-
-        // Return zero delta - swap will NOT execute now
-        // TEE will execute it later in batch
-        return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
     }
 
     /// @notice Calculate swap delta based on strategy price
@@ -567,5 +452,13 @@ contract PropHook is BaseHook {
             if (hookReserves[poolId][key.currency1] < amount) revert PropHook__InsufficientReserves();
             hookReserves[poolId][key.currency1] -= amount;
         }
+    }
+
+    function _checkLaunchpad() internal view {
+        if (msg.sender != launchpad) revert PropHook__Unauthorized();
+    }
+
+    function _checkSwapHandler() internal view {
+        if (msg.sender != swapHandler) revert PropHook__Unauthorized();
     }
 }
