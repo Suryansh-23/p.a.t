@@ -7,6 +7,7 @@ import type { Widgets } from "blessed";
 import { ParameterManager } from "./services/parameterManager.js";
 import { PriceSimulator } from "./services/priceSimulator.js";
 import { PriceChart } from "./components/priceChart.js";
+import { ParameterPanel } from "./components/parameterPanel.js";
 import { APP_NAME, KEY_BINDINGS } from "./constants.js";
 import type { AppState } from "./types/state.js";
 import { DEFAULT_PARAMETERS, UI_CONFIG } from "./config/defaults.js";
@@ -17,6 +18,7 @@ export class App {
   private parameterManager: ParameterManager;
   private priceSimulator: PriceSimulator;
   private priceChart?: PriceChart;
+  private parameterPanelComponent?: ParameterPanel;
   private state: AppState;
   private updateTimer?: NodeJS.Timeout;
   private priceSubscription?: () => void;
@@ -62,6 +64,10 @@ export class App {
     });
 
     this.screen.key(KEY_BINDINGS.quit, () => {
+      // Ignore if an input widget is focused
+      const focused = this.screen.focused as any;
+      if (focused?.type === "textarea" || focused?.type === "textbox") return;
+
       this.cleanup();
       process.exit(0);
     });
@@ -88,7 +94,7 @@ export class App {
     });
 
     // Rainbow trail
-    const rainbow = blessed.box({
+    blessed.box({
       parent: header,
       top: 1,
       left: 1,
@@ -100,7 +106,7 @@ export class App {
     });
 
     // Nyan cat
-    const nyanCat = blessed.box({
+    blessed.box({
       parent: header,
       top: 3,
       left: 1,
@@ -112,7 +118,7 @@ export class App {
     });
 
     // Main title
-    const title = blessed.box({
+    blessed.box({
       parent: header,
       top: 1,
       left: 13,
@@ -191,17 +197,13 @@ export class App {
       },
     });
 
-    // Placeholder content for parameters
-    const paramContent = blessed.text({
-      top: 1,
-      left: 1,
-      width: "100%-2",
-      content: this.renderParameterContent(),
-      tags: true,
-      style: {
-        fg: "white",
-      },
-    });
+    // Interactive parameter inputs
+    this.parameterPanelComponent = new ParameterPanel(
+      this.screen,
+      parameterPanel,
+      this.state,
+      this.parameterManager
+    );
 
     // Price chart with spread visualization
     this.priceChart = new PriceChart(vizPanel, {
@@ -253,7 +255,6 @@ export class App {
     });
 
     // Append to containers
-    parameterPanel.append(paramContent);
     vizPanel.append(spreadInfo);
     mainContainer.append(parameterPanel);
     mainContainer.append(vizPanel);
@@ -263,11 +264,27 @@ export class App {
 
     // Store references for updates
     this.screen.data = {
-      paramContent,
       spreadInfo,
       statusBar,
       subtitle,
     };
+
+    // Setup keyboard handlers
+    this.screen.key(["r"], () => {
+      this.resetParameters();
+    });
+  }
+  /**
+   * Reset parameters to defaults
+   */
+  private resetParameters(): void {
+    this.state.parameters = {
+      updateFrequency: 2000,
+      spreadRange: { min: 1, max: 10 },
+      correlationFactor: 0.7,
+    };
+    this.parameterManager.updateParameters(this.state.parameters);
+    this.updateUI();
   }
 
   /**
@@ -283,59 +300,6 @@ export class App {
   /**
    * Render ASCII art header (deprecated - kept for reference)
    */
-  private renderHeader(): string {
-    const status = this.state.isPaused
-      ? "{yellow-fg}PAUSED{/yellow-fg}"
-      : "{green-fg}RUNNING{/green-fg}";
-    return `
-{red-fg}━━{/red-fg}{yellow-fg}━━{/yellow-fg}{green-fg}━━{/green-fg}{cyan-fg}━━{/cyan-fg}{blue-fg}━━{/blue-fg}{magenta-fg}━━  {/magenta-fg}{bold}{cyan-fg}██╗    ██╗██╗███╗   ██╗████████╗███████╗██████╗  ██████╗██╗   ██╗████████╗███████╗{/cyan-fg}{/bold}
-{red-fg}━━{/red-fg}{yellow-fg}━━{/yellow-fg}{green-fg}━━{/green-fg}{cyan-fg}━━{/cyan-fg}{blue-fg}━━{/blue-fg}{magenta-fg}━━  {/magenta-fg}{bold}{cyan-fg}██║    ██║██║████╗  ██║╚══██╔══╝██╔════╝██╔══██╗██╔════╝██║   ██║╚══██╔══╝██╔════╝{/cyan-fg}{/bold}
-{red-fg}━━{/red-fg}{yellow-fg}━━{/yellow-fg}{green-fg}━━{/green-fg}{cyan-fg}━━{/cyan-fg}{blue-fg}━━{/blue-fg}{magenta-fg}━━  {/magenta-fg}{bold}{cyan-fg}██║ █╗ ██║██║██╔██╗ ██║   ██║   █████╗  ██████╔╝██║     ██║   ██║   ██║   █████╗  {/cyan-fg}{/bold}
-{magenta-fg}+~,_,~+  {/magenta-fg}{bold}{cyan-fg}██║███╗██║██║██║╚██╗██║   ██║   ██╔══╝  ██╔══██╗██║     ██║   ██║   ██║   ██╔══╝  {/cyan-fg}{/bold}
-{magenta-fg}( @.@ )  {/magenta-fg}{bold}{cyan-fg}╚███╔███╔╝██║██║ ╚████║   ██║   ███████╗██║  ██║╚██████╗╚██████╔╝   ██║   ███████╗{/cyan-fg}{/bold}
-{magenta-fg}( >^< )  {/magenta-fg}{bold}{cyan-fg} ╚══╝╚══╝ ╚═╝╚═╝  ╚═══╝   ╚═╝   ╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝    ╚═╝   ╚══════╝{/cyan-fg}{/bold}
-                  {magenta-fg}P.A.T Dashboard{/magenta-fg}                                   {white-fg}[{/white-fg}${status}{white-fg}]{/white-fg}
-    `.trim();
-  }
-
-  /**
-   * Render parameter panel content
-   */
-  private renderParameterContent(): string {
-    const params = this.state.parameters;
-
-    return `
-{bold}{white-fg}Update Frequency{/white-fg}{/bold}
-{cyan-fg}Block Time:{/cyan-fg} {yellow-fg}${
-      params.updateFrequency
-    }{/yellow-fg} ms
-
-{bold}{white-fg}Spread Range (BPS){/white-fg}{/bold}
-{cyan-fg}Min:{/cyan-fg} {yellow-fg}${
-      params.spreadRange.min
-    }{/yellow-fg} bps {gray-fg}(${(params.spreadRange.min / 100).toFixed(
-      2
-    )}%){/gray-fg}
-{cyan-fg}Max:{/cyan-fg} {yellow-fg}${
-      params.spreadRange.max
-    }{/yellow-fg} bps {gray-fg}(${(params.spreadRange.max / 100).toFixed(
-      2
-    )}%){/gray-fg}
-
-{bold}{white-fg}Correlation Factor{/white-fg}{/bold}
-{cyan-fg}Factor:{/cyan-fg} {yellow-fg}${params.correlationFactor.toFixed(
-      2
-    )}{/yellow-fg}
-
-{gray-fg}━━━━━━━━━━━━━━━━━━━━━━━━━{/gray-fg}
-
-{green-fg}Press 'a' to apply changes{/green-fg}
-{green-fg}Press 'r' to reset{/green-fg}
-{green-fg}Press 'p' to pause{/green-fg}
-{red-fg}Press 'q' to quit{/red-fg}
-    `.trim();
-  }
-
   /**
    * Render current spread information
    */
@@ -431,21 +395,32 @@ ${
    */
   private setupEventHandlers(): void {
     this.screen.key(KEY_BINDINGS.pause, () => {
+      // Ignore if an input widget is focused
+      const focused = this.screen.focused as any;
+      if (focused?.type === "textarea" || focused?.type === "textbox") return;
+
       this.state.isPaused = !this.state.isPaused;
       this.updateUI();
     });
 
     this.screen.key(KEY_BINDINGS.reset, () => {
+      // Ignore if an input widget is focused
+      const focused = this.screen.focused as any;
+      if (focused?.type === "textarea" || focused?.type === "textbox") return;
+
       this.parameterManager.reset();
       this.state.parameters = this.parameterManager.getParameters();
       this.updateUI();
     });
 
     this.screen.key(KEY_BINDINGS.help, () => {
+      // Ignore if an input widget is focused
+      const focused = this.screen.focused as any;
+      if (focused?.type === "textarea" || focused?.type === "textbox") return;
+
       this.showHelp();
     });
   }
-
   /**
    * Start price update loop
    */
@@ -522,8 +497,9 @@ ${
   private updateUI(): void {
     const data = this.screen.data as any;
 
-    if (data.paramContent) {
-      data.paramContent.setContent(this.renderParameterContent());
+    // Update parameter panel
+    if (this.parameterPanelComponent) {
+      this.parameterPanelComponent.update();
     }
 
     if (data.spreadInfo) {
