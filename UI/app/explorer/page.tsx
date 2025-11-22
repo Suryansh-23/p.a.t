@@ -39,7 +39,13 @@ export default function ExplorerPage() {
   })
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="relative min-h-screen overflow-hidden bg-[#03030f] text-foreground">
+      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
+        <div className="absolute inset-0 bg-gradient-to-b from-[#050611] via-[#030617] to-[#010109]" />
+        <div className="absolute left-1/3 top-10 h-72 w-72 rounded-full bg-[#0500e1]/20 blur-[140px]" />
+        <div className="absolute right-0 bottom-0 h-64 w-64 translate-x-1/4 rounded-full bg-[#02c2ff]/15 blur-[150px]" />
+      </div>
+
       <Navigation />
 
       <div className="container mx-auto px-4 pt-32 pb-20">
@@ -47,26 +53,6 @@ export default function ExplorerPage() {
         <div className="mb-12">
           <h1 className="mb-4 text-4xl font-bold tracking-tight">AMM Pool Explorer</h1>
           <p className="text-lg text-muted-foreground">Browse and explore all available automated market maker pools</p>
-        </div>
-
-        {/* Stats Overview */}
-        <div className="mb-8 grid gap-4 md:grid-cols-4">
-          <Card className="p-4">
-            <div className="text-sm text-muted-foreground">Total Pools</div>
-            <div className="text-2xl font-bold text-primary">{mockAMMPools.length}</div>
-          </Card>
-          <Card className="p-4">
-            <div className="text-sm text-muted-foreground">Total TVL</div>
-            <div className="text-2xl font-bold text-primary">$183.9M</div>
-          </Card>
-          <Card className="p-4">
-            <div className="text-sm text-muted-foreground">24h Volume</div>
-            <div className="text-2xl font-bold text-primary">$55.8M</div>
-          </Card>
-          <Card className="p-4">
-            <div className="text-sm text-muted-foreground">Avg APY</div>
-            <div className="text-2xl font-bold text-primary">25.4%</div>
-          </Card>
         </div>
 
         {/* Search and Filter */}
@@ -77,108 +63,66 @@ export default function ExplorerPage() {
               placeholder="Search pools (e.g., ETH, USDC, ETH/USDC)"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
+              className="border-white/10 bg-[#050611]/60 pl-10"
             />
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Sort by:</span>
-            <Button variant={sortBy === "tvl" ? "default" : "outline"} size="sm" onClick={() => setSortBy("tvl")}>
-              TVL
-            </Button>
-            <Button variant={sortBy === "volume" ? "default" : "outline"} size="sm" onClick={() => setSortBy("volume")}>
-              Volume
-            </Button>
-            <Button variant={sortBy === "apy" ? "default" : "outline"} size="sm" onClick={() => setSortBy("apy")}>
-              APY
-            </Button>
           </div>
         </div>
 
         {/* Pool Grid */}
         {sortedPools.length > 0 ? (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
             {sortedPools.map((pool) => (
-              <Link key={pool.id} href={`/pool/${pool.id}`}>
-                <Card className="group h-full p-6 transition-all hover:shadow-lg hover:shadow-primary/10 hover:border-primary/50">
-                  {/* Token Pair Header */}
-                  <div className="mb-6 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="relative">
-                        <Image
-                          src={pool.tokenA.logo || "/placeholder.svg"}
-                          alt={pool.tokenA.symbol}
-                          width={40}
-                          height={40}
-                          className="rounded-full border-2 border-background"
-                        />
-                        <Image
-                          src={pool.tokenB.logo || "/placeholder.svg"}
-                          alt={pool.tokenB.symbol}
-                          width={40}
-                          height={40}
-                          className="absolute -right-3 top-0 rounded-full border-2 border-background"
-                        />
-                      </div>
-                      <div className="ml-3">
-                        <div className="text-lg font-semibold">
-                          {pool.tokenA.symbol}/{pool.tokenB.symbol}
-                        </div>
-                        <div className="text-xs text-muted-foreground">Fee: {pool.fees}</div>
-                      </div>
-                    </div>
+              <Card
+                key={pool.id}
+                className="flex h-full flex-col border-white/10 bg-[#050818]/90 p-5 transition hover:border-primary/40"
+              >
+                <div className="flex items-center gap-3">
+                  <div>
+                    <p className="text-sm text-muted-foreground">
+                      {pool.tokenA.symbol} · {pool.tokenB.symbol}
+                    </p>
+                    <h3 className="text-lg font-semibold">{pool.tokenA.symbol + "/" + pool.tokenB.symbol}</h3>
                   </div>
-
-                  {/* Pool Stats */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">TVL</span>
-                      <span className="font-semibold">{pool.tvl}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">24h Volume</span>
-                      <span className="font-semibold">{pool.volume24h}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">APY</span>
-                      <span className="flex items-center gap-1 font-semibold text-accent">
-                        <TrendingUp className="h-3 w-3" />
-                        {pool.apy}
-                      </span>
-                    </div>
+                </div>
+                <div className="mt-4 grid grid-cols-3 gap-3 text-xs text-muted-foreground">
+                  <div>
+                    <p>TVL</p>
+                    <p className="text-base font-semibold text-foreground">{pool.tvl}</p>
                   </div>
-
-                  {/* Liquidity Info */}
-                  <div className="mt-6 rounded-lg border border-border bg-muted/30 p-3">
-                    <div className="mb-1 text-xs text-muted-foreground">Pool Liquidity</div>
-                    <div className="space-y-1 text-xs">
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">{pool.tokenA.symbol}:</span>
-                        <span className="font-medium">{pool.liquidity.tokenA}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">{pool.tokenB.symbol}:</span>
-                        <span className="font-medium">{pool.liquidity.tokenB}</span>
-                      </div>
-                    </div>
+                  <div>
+                    <p>ETH Vol</p>
+                    <p className="text-base font-semibold text-foreground">{pool.volume24h}</p>
                   </div>
-
-                  {/* Hover Action */}
-                  <div className="mt-4 text-center text-sm font-medium text-primary opacity-0 transition-opacity group-hover:opacity-100">
-                    View Pool Details →
+                  <div>
+                    <p>ETH Vol</p>
+                    <p className="text-base font-semibold text-foreground">{pool.volume24h}</p>
                   </div>
-                </Card>
-              </Link>
+                </div>
+                <div className="mt-auto pt-4">
+                  <Button
+                    asChild
+                    size="sm"
+                    className="w-full justify-center border border-white/20 bg-transparent text-white hover:bg-primary/10 hover:text-white"
+                    variant="outline"
+                  >
+                    <Link href={`/pool/${pool.id}`}>View Details</Link>
+                  </Button>
+                </div>
+              </Card>
             ))}
           </div>
         ) : (
-          <Card className="p-12 text-center">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+          <Card className="border-white/10 bg-[#060b20]/80 p-12 text-center">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-white/5">
               <Search className="h-8 w-8 text-muted-foreground" />
             </div>
             <h3 className="mb-2 text-lg font-semibold">No pools found</h3>
             <p className="text-muted-foreground">Try adjusting your search query or browse all available pools</p>
-            <Button onClick={() => setSearchQuery("")} variant="outline" className="mt-4">
+            <Button
+              onClick={() => setSearchQuery("")}
+              variant="outline"
+              className="mt-4 border-white/20 bg-transparent text-foreground"
+            >
               Clear Search
             </Button>
           </Card>
