@@ -17,8 +17,8 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IPropHook} from "@interfaces/IPropHook.sol";
 
 /// @title PropLaunchpad
-/// @notice Factory and manager for proposition AMM pools with strategy-based pricing
-/// @dev Handles pool creation, liquidity management, and integrates with PropHook
+/// @notice Factory and manager for proprietary AMM pools with custom pricing strategies
+/// @dev Enables market makers to launch and manage their own proprietary pools with PropHook
 contract PropLaunchpad is Ownable, IUnlockCallback {
     using PoolIdLibrary for PoolKey;
     using SafeERC20 for IERC20;
@@ -34,9 +34,9 @@ contract PropLaunchpad is Ownable, IUnlockCallback {
         address token1;
         uint256 token0SeedAmt;
         uint256 token1SeedAmt;
-        uint24 fee;
         address strategyAdapter;
         address thresholdAdapter;
+        string poolName;
         CuratorInfo curatorInfo;
     }
 
@@ -52,7 +52,7 @@ contract PropLaunchpad is Ownable, IUnlockCallback {
         PoolKey key;
         address asset;
         uint256 amount;
-        bool isAdd; // true = add liquidity, false = remove liquidity
+        bool isAdd;
     }
 
     /// @notice PoolManager contract instance
@@ -72,13 +72,7 @@ contract PropLaunchpad is Ownable, IUnlockCallback {
     ////////////////////// Events //////////////////////
     ////////////////////////////////////////////////////
 
-    event PoolLaunched(
-        PoolId indexed poolId,
-        address indexed token0,
-        address indexed token1,
-        address strategyAdapter,
-        address thresholdAdapter
-    );
+    event PoolLaunched(PoolId indexed poolId, LaunchConfig launchConfig);
 
     event LiquidityAdded(PoolId indexed poolId, address indexed provider, address asset, uint256 amount);
 
@@ -99,6 +93,15 @@ contract PropLaunchpad is Ownable, IUnlockCallback {
     error PropLaunchpad__InvalidThresholdAdapter();
     error PropLaunchpad__InvalidStrategyAdapter();
     error PropLaunchpad__InvalidPoolManager();
+
+    ////////////////////////////////////////////////////
+    ////////////////////// Modifiers ///////////////////
+    ////////////////////////////////////////////////////
+
+    modifier onlyCurator(PoolId poolId) {
+        _checkCurator(poolId);
+        _;
+    }
 
     ////////////////////////////////////////////////////
     /////////////////// Constructor ////////////////////
@@ -129,14 +132,14 @@ contract PropLaunchpad is Ownable, IUnlockCallback {
             currency0: Currency.wrap(_launchConfig.token0),
             currency1: Currency.wrap(_launchConfig.token1),
             fee: 0,
-            tickSpacing: 60,
+            tickSpacing: 1,
             hooks: IHooks(address(propHook))
         });
 
         poolId = key.toId();
 
         // Check if pool already exists
-        if (launchConfigs[poolId].token0 != address(0)) {
+        if (bytes(launchConfigs[poolId].poolName).length == 0) {
             revert PropLaunchpad__PoolAlreadyExists();
         }
 
@@ -149,35 +152,32 @@ contract PropLaunchpad is Ownable, IUnlockCallback {
         // Store configuration
         launchConfigs[poolId] = _launchConfig;
 
-        emit PoolLaunched(
-            poolId,
-            _launchConfig.token0,
-            _launchConfig.token1,
-            _launchConfig.strategyAdapter,
-            _launchConfig.thresholdAdapter
-        );
+        emit PoolLaunched(poolId, _launchConfig);
     }
 
-    /// @notice Add single-sided liquidity to a pool
+    /// @notice Add liquidity to a pool
     /// @param poolId The pool ID
     /// @param asset The token to deposit (must be token0 or token1)
     /// @param amount The amount to deposit
-    function addLiquidity(PoolId poolId, address asset, uint256 amount) external {
+    function addLiquidity(PoolId poolId, address asset, uint256 amount) external payable onlyCurator(poolId) {
         LaunchConfig memory config = launchConfigs[poolId];
-        if (config.token0 == address(0)) revert PropLaunchpad__PoolNotFound();
+
         if (asset != config.token0 && asset != config.token1) revert PropLaunchpad__InvalidAsset();
-        if (amount == 0) revert PropLaunchpad__InsufficientAmount();
 
         PoolKey memory key = PoolKey({
             currency0: Currency.wrap(config.token0),
             currency1: Currency.wrap(config.token1),
-            fee: config.fee,
+            fee: 0,
             tickSpacing: 1,
             hooks: IHooks(address(propHook))
         });
 
         // Transfer tokens from user to this contract
-        IERC20(asset).safeTransferFrom(msg.sender, address(this), amount);
+        if (asset != address(0)) {
+            IERC20(asset).safeTransferFrom(msg.sender, address(this), amount);
+        } else {
+            if (msg.value != amount) revert PropLaunchpad__InsufficientAmount();
+        }
 
         // Prepare callback data
         CallbackData memory data =
@@ -193,16 +193,13 @@ contract PropLaunchpad is Ownable, IUnlockCallback {
     /// @param poolId The pool ID
     /// @param asset The token to withdraw
     /// @param amount The amount to withdraw
-    function removeLiquidity(PoolId poolId, address asset, uint256 amount) external {
+    function removeLiquidity(PoolId poolId, address asset, uint256 amount) external onlyCurator(poolId) {
         LaunchConfig memory config = launchConfigs[poolId];
-        if (config.token0 == address(0)) revert PropLaunchpad__PoolNotFound();
-        if (asset != config.token0 && asset != config.token1) revert PropLaunchpad__InvalidAsset();
-        if (amount == 0) revert PropLaunchpad__InsufficientAmount();
 
         PoolKey memory key = PoolKey({
             currency0: Currency.wrap(config.token0),
             currency1: Currency.wrap(config.token1),
-            fee: config.fee,
+            fee: 0,
             tickSpacing: 1,
             hooks: IHooks(address(propHook))
         });
@@ -244,48 +241,64 @@ contract PropLaunchpad is Ownable, IUnlockCallback {
     ////////////////////////////////////////////////////
 
     /// @notice Internal callback for adding liquidity
+    /// @dev Supports SINGLE-SIDED liquidity: curator provides only ONE asset at a time
     function _addLiquidityCallback(CallbackData memory data) internal {
-        // Encode hook data with asset and amount
+        // Encode hook data with asset and amount (SINGLE ASSET ONLY)
         bytes memory hookData = abi.encode(data.asset, data.amount);
 
         // Create modify liquidity params (amounts will be overridden by hook)
-        ModifyLiquidityParams memory params = ModifyLiquidityParams({
-            tickLower: -887220,
-            tickUpper: 887220,
-            liquidityDelta: 1e18, // Arbitrary, overridden by hook
-            salt: bytes32(0)
-        });
+        ModifyLiquidityParams memory params =
+            ModifyLiquidityParams({tickLower: -887220, tickUpper: 887220, liquidityDelta: 1e18, salt: bytes32(0)});
 
-        // Modify liquidity
+        // Modify liquidity - hook overrides to accept single-sided amount
         (BalanceDelta delta,) = IPoolManager(POOL_MANAGER).modifyLiquidity(data.key, params, hookData);
 
-        // Settle balances
+        // Settle balances for the SINGLE asset provided
         Currency currency = Currency.wrap(data.asset);
 
-        // If delta is negative, we owe tokens to the pool
+        // Check if we need to settle (delta negative means we owe tokens to pool)
         if (currency == data.key.currency0) {
+            // Adding token0 only
             if (delta.amount0() < 0) {
-                uint256 amount = uint256(int256(-delta.amount0()));
-                // Transfer tokens and settle
-                IERC20(data.asset).forceApprove(address(POOL_MANAGER), amount);
-                IPoolManager(POOL_MANAGER).sync(currency);
+                uint256 amountOwed = uint256(int256(-delta.amount0()));
+                
+                // Handle native currency (address(0))
+                if (data.asset == address(0)) {
+                    // Settle native currency
+                    IPoolManager(POOL_MANAGER).settle{value: amountOwed}();
+                } else {
+                    // Settle ERC20 token
+                    IERC20(data.asset).forceApprove(address(POOL_MANAGER), amountOwed);
+                    IPoolManager(POOL_MANAGER).sync(currency);
+                    IPoolManager(POOL_MANAGER).settle();
+                }
             }
         } else {
+            // Adding token1 only
             if (delta.amount1() < 0) {
-                uint256 amount = uint256(int256(-delta.amount1()));
-                IERC20(data.asset).forceApprove(address(POOL_MANAGER), amount);
-                IPoolManager(POOL_MANAGER).sync(Currency.wrap(data.asset));
+                uint256 amountOwed = uint256(int256(-delta.amount1()));
+                
+                // Handle native currency (address(0))
+                if (data.asset == address(0)) {
+                    // Settle native currency
+                    IPoolManager(POOL_MANAGER).settle{value: amountOwed}();
+                } else {
+                    // Settle ERC20 token
+                    IERC20(data.asset).forceApprove(address(POOL_MANAGER), amountOwed);
+                    IPoolManager(POOL_MANAGER).sync(currency);
+                    IPoolManager(POOL_MANAGER).settle();
+                }
             }
         }
-        IPoolManager(POOL_MANAGER).settle();
     }
 
     /// @notice Internal callback for removing liquidity
+    /// @dev Supports SINGLE-SIDED withdrawal: curator withdraws only ONE asset at a time
     function _removeLiquidityCallback(CallbackData memory data) internal {
-        // Encode hook data with asset and amount
+        // Encode hook data with asset and amount (SINGLE ASSET ONLY)
         bytes memory hookData = abi.encode(data.asset, data.amount);
 
-        // Create modify liquidity params
+        // Create modify liquidity params (negative for removal)
         ModifyLiquidityParams memory params = ModifyLiquidityParams({
             tickLower: -887220,
             tickUpper: 887220,
@@ -293,21 +306,23 @@ contract PropLaunchpad is Ownable, IUnlockCallback {
             salt: bytes32(0)
         });
 
-        // Modify liquidity
+        // Modify liquidity - hook overrides to handle single-sided withdrawal
         (BalanceDelta delta,) = IPoolManager(POOL_MANAGER).modifyLiquidity(data.key, params, hookData);
 
-        // Take tokens from pool
+        // Take tokens from pool for the SINGLE asset being withdrawn
         Currency currency = Currency.wrap(data.asset);
 
         if (currency == data.key.currency0) {
+            // Withdrawing token0 only
             if (delta.amount0() > 0) {
-                uint256 amount = uint256(int256(delta.amount0()));
-                IPoolManager(POOL_MANAGER).take(currency, data.sender, amount);
+                uint256 amountToReceive = uint256(int256(delta.amount0()));
+                IPoolManager(POOL_MANAGER).take(currency, data.sender, amountToReceive);
             }
         } else {
+            // Withdrawing token1 only
             if (delta.amount1() > 0) {
-                uint256 amount = uint256(int256(delta.amount1()));
-                IPoolManager(POOL_MANAGER).take(currency, data.sender, amount);
+                uint256 amountToReceive = uint256(int256(delta.amount1()));
+                IPoolManager(POOL_MANAGER).take(currency, data.sender, amountToReceive);
             }
         }
     }
@@ -334,5 +349,9 @@ contract PropLaunchpad is Ownable, IUnlockCallback {
         if (_launchConfig.thresholdAdapter == address(0)) {
             revert PropLaunchpad__InvalidThresholdAdapter();
         }
+    }
+
+    function _checkCurator(PoolId poolId) internal view {
+        if (msg.sender != launchConfigs[poolId].curatorInfo.curator) revert PropLaunchpad__Unauthorized();
     }
 }

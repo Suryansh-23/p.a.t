@@ -3,6 +3,8 @@
 
 @openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/
 
+@pythnetwork/pyth-sdk-solidity/=node_modules/@pythnetwork/pyth-sdk-solidity
+
 @core/=src/
 @utils/=src/utils/
 @interfaces/=src/interfaces/

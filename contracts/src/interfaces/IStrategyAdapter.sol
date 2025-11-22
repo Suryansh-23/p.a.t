@@ -5,4 +5,6 @@ interface IStrategyAdapter {
     function update(bytes calldata _params) external;
 
     function price(bytes calldata _params) external returns (uint256);
+
+    function parameters() external view returns (bytes memory);
 }

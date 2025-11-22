@@ -6,7 +6,7 @@ import {IStrategyAdapter} from "@interfaces/IStrategyAdapter.sol";
 abstract contract BaseStrategyAdapter is IStrategyAdapter {
     bytes public parameters;
 
-    function update(bytes calldata _params) public virtual;
+    function update(bytes calldata _params) external virtual;
 
     function price(bytes calldata _params) external virtual returns (uint256);
 
