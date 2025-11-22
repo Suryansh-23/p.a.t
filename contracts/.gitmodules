@@ -1,0 +1,6 @@
+[submodule "contracts/lib/universal-router"]
+	path = contracts-tmp/lib/universal-router
+	url = https://github.com/Uniswap/universal-router
+[submodule "contracts/lib/openzeppelin-contracts"]
+	path = contracts-tmp/lib/openzeppelin-contracts
+	url = https://github.com/Openzeppelin/openzeppelin-contracts

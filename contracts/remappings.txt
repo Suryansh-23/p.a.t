@@ -1,0 +1,12 @@
+@uniswap/v4-core/=lib/universal-router/lib/v4-periphery/lib/v4-core/
+@uniswap/v4-periphery/=lib/universal-router/lib/v4-periphery/
+
+@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/
+
+@core/=src/
+@utils/=src/utils/
+@interfaces/=src/interfaces/
+@adapters/=src/adapters/
+@test/=test/
+@mocks/=test/mocks/
+@script/=script/
