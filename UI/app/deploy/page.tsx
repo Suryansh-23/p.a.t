@@ -7,10 +7,16 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ChevronLeft, ChevronRight, Check } from "lucide-react"
+import { useChainId, useWriteContract, useAccount, usePublicClient } from "wagmi"
+import { parseUnits } from "viem"
+import { PropAMMContracts } from "@/utils/addresses"
+import { PropAMMLaunchPadAbi } from "@/utils/abi/PropAMMLaunchPad"
+import { uniChainSepolia } from "@/components/UniChainSepolia"
+import { erc20Abi } from "@/utils/abi/erc20"
 
 const STEPS = [
   { id: 1, title: "Curator Details", description: "Who is managing this pool" },
-  { id: 2, title: "Assets & Funding", description: "Seed capital & fee" },
+  { id: 2, title: "Assets & Funding", description: "Seed capital & pool name" },
   { id: 3, title: "Strategy Adapter", description: "Select or write strategy" },
   { id: 4, title: "Threshold Adapter", description: "Guardrails & monitoring" },
   { id: 5, title: "Review & Launch", description: "Confirm configuration" },
@@ -100,16 +106,23 @@ export default function DeployPage() {
     curator: "",
     curatorName: "",
     curatorWebsite: "",
+    poolName: "",
     token0: "",
     token1: "",
     token0Amount: "",
     token1Amount: "",
-    fee: "0.3",
     customStrategyCode: "",
     customThresholdCode: "",
     strategyAdapter: "",
     thresholdAdapter: "",
   })
+  const [txHash, setTxHash] = useState<`0x${string}` | undefined>()
+  const chainId = useChainId()
+  const { address } = useAccount()
+  const publicClient = usePublicClient({ chainId: uniChainSepolia.id })
+  const { writeContractAsync, isPending: isLaunchPending } = useWriteContract()
+  const [fundingStatus, setFundingStatus] = useState({ token0: false, token1: false })
+  const [pendingTokenIndex, setPendingTokenIndex] = useState<0 | 1 | null>(null)
 
   const generateMockAddress = () =>
     `0x${Array.from({ length: 40 })
@@ -142,6 +155,10 @@ export default function DeployPage() {
   }
 
   const handleNext = () => {
+    if (currentStep === 2 && (!fundingStatus.token0 || !fundingStatus.token1)) {
+      alert("Please fund both tokens before continuing.")
+      return
+    }
     if (currentStep < STEPS.length) {
       setCurrentStep(currentStep + 1)
     }
@@ -153,27 +170,171 @@ export default function DeployPage() {
     }
   }
 
+  const ADDRESS_FIELDS = new Set([
+    "curator",
+    "token0",
+    "token1",
+    "strategyAdapter",
+    "thresholdAdapter",
+  ])
+
   const handleInputChange = (field: string, value: string) => {
-    setFormData({ ...formData, [field]: value })
+    const nextValue = ADDRESS_FIELDS.has(field) ? value.toLowerCase() : value
+    setFormData((prev) => ({ ...prev, [field]: nextValue }))
+    if (field === "token0" || field === "token0Amount") {
+      setFundingStatus((prev) => ({ ...prev, token0: false }))
+    }
+    if (field === "token1" || field === "token1Amount") {
+      setFundingStatus((prev) => ({ ...prev, token1: false }))
+    }
   }
 
-  const handleDeploy = () => {
-    const strategyCode =
-      selectedStrategy === "custom"
-        ? formData.customStrategyCode
-        : STRATEGY_SNIPPETS[selectedStrategy as keyof typeof STRATEGY_SNIPPETS] || CONTRACT_SNIPPET
-    const thresholdCode =
-      selectedThreshold === "thresholdCustom"
-        ? formData.customThresholdCode
-        : THRESHOLD_SNIPPETS[selectedThreshold as keyof typeof THRESHOLD_SNIPPETS]
-    console.log("[v0] Deploying AMM with data:", {
-      ...formData,
-      selectedStrategy,
-      selectedThreshold,
-      strategyCode,
-      thresholdCode,
-    })
-    alert("AMM deployed successfully!")
+  const parseAmount = (value: string, decimals = 18) => {
+    try {
+      return parseUnits(value || "0", decimals)
+    } catch {
+      return 0n
+    }
+  }
+
+  const getTokenAmount = async (token: `0x${string}`, value: string) => {
+    if (!publicClient) throw new Error("Public client unavailable")
+    let decimals = 18
+    try {
+      const result = await publicClient.readContract({
+        abi: erc20Abi,
+        address: token,
+        functionName: "decimals",
+      })
+      decimals = Number(result)
+    } catch {
+      decimals = 18
+    }
+    return parseAmount(value, decimals)
+  }
+
+  const fundToken = async (tokenIndex: 0 | 1) => {
+    const tokenAddress = tokenIndex === 0 ? formData.token0 : formData.token1
+    const tokenAmount = tokenIndex === 0 ? formData.token0Amount : formData.token1Amount
+    const tokenLabel = tokenIndex === 0 ? "0" : "1"
+
+    if (!tokenAddress) {
+      alert(`Please provide token ${tokenLabel} address before funding.`)
+      return false
+    }
+    if (!tokenAmount) {
+      alert(`Please provide a seed amount for token ${tokenLabel}.`)
+      return false
+    }
+    if (!address) {
+      alert("Connect your wallet to continue.")
+      return false
+    }
+    if (chainId && chainId !== uniChainSepolia.id) {
+      alert("Switch to UniChain Sepolia to fund the pool.")
+      return false
+    }
+    const launchpadAddress = PropAMMContracts[uniChainSepolia.id]
+    if (!launchpadAddress) {
+      alert("Launchpad address missing for UniChain Sepolia.")
+      return false
+    }
+    if (!publicClient) {
+      alert("Public client unavailable. Please refresh the page.")
+      return false
+    }
+
+    const amount = await getTokenAmount(tokenAddress as `0x${string}`, tokenAmount)
+    if (amount === 0n) {
+      alert("Seed amount must be greater than zero.")
+      return false
+    }
+
+    setPendingTokenIndex(tokenIndex)
+    try {
+      const approveHash = await writeContractAsync({
+        abi: erc20Abi,
+        address: tokenAddress as `0x${string}`,
+        functionName: "approve",
+        args: [launchpadAddress, amount],
+        chainId: uniChainSepolia.id,
+      })
+      await publicClient.waitForTransactionReceipt({ hash: approveHash })
+      const transferHash = await writeContractAsync({
+        abi: erc20Abi,
+        address: tokenAddress as `0x${string}`,
+        functionName: "transfer",
+        args: [launchpadAddress, amount],
+        chainId: uniChainSepolia.id,
+      })
+      await publicClient.waitForTransactionReceipt({ hash: transferHash })
+      setFundingStatus((prev) =>
+        tokenIndex === 0 ? { ...prev, token0: true } : { ...prev, token1: true }
+      )
+      alert(`Token ${tokenLabel} approved and transferred to the launchpad.`)
+      return true
+    } catch (error) {
+      console.error(error)
+      alert((error as Error).message || `Failed to fund token ${tokenLabel}.`)
+      return false
+    } finally {
+      setPendingTokenIndex(null)
+    }
+  }
+
+  const handleDeploy = async () => {
+    if (!formData.poolName || !formData.token0 || !formData.token1) {
+      alert("Please complete pool details before deploying.")
+      return
+    }
+    if (!formData.strategyAdapter || !formData.thresholdAdapter) {
+      alert("Deploy both adapters before launching.")
+      return
+    }
+    if (chainId && chainId !== uniChainSepolia.id) {
+      alert("Please switch your wallet to UniChain Sepolia.")
+      return
+    }
+    const launchpadAddress = PropAMMContracts[uniChainSepolia.id]
+    if (!launchpadAddress) {
+      alert("Launchpad address for UniChain Sepolia is not configured.")
+      return
+    }
+
+    const [token0SeedAmt, token1SeedAmt] = await Promise.all([
+      getTokenAmount(formData.token0 as `0x${string}`, formData.token0Amount),
+      getTokenAmount(formData.token1 as `0x${string}`, formData.token1Amount),
+    ])
+
+    const launchConfig = {
+      token0: formData.token0 as `0x${string}`,
+      token1: formData.token1 as `0x${string}`,
+      token0SeedAmt,
+      token1SeedAmt,
+      strategyAdapter: formData.strategyAdapter as `0x${string}`,
+      thresholdAdapter: formData.thresholdAdapter as `0x${string}`,
+      poolName: formData.poolName,
+      curatorInfo: {
+        curator: formData.curator as `0x${string}`,
+        name: formData.curatorName,
+        website: formData.curatorWebsite,
+      },
+    }
+
+    try {
+      const hash = await writeContractAsync({
+        abi: PropAMMLaunchPadAbi,
+        address: launchpadAddress,
+        functionName: "launch",
+        args: [launchConfig],
+        chainId: uniChainSepolia.id,
+      })
+      setTxHash(hash)
+      alert("Deployment transaction sent on UniChain Sepolia.")
+    } catch (error) {
+      console.error(error)
+      alert((error as Error).message || "Failed to deploy AMM.")
+    }
   }
 
   const strategySnippet =
@@ -186,8 +347,13 @@ export default function DeployPage() {
       ? formData.customThresholdCode || "// Paste your threshold module here..."
       : THRESHOLD_SNIPPETS[selectedThreshold as keyof typeof THRESHOLD_SNIPPETS] || THRESHOLD_SNIPPETS.thresholdA
 
+  const fundingComplete = fundingStatus.token0 && fundingStatus.token1
+
   const isNextDisabled =
-    (currentStep === 3 && !formData.strategyAdapter) || (currentStep === 4 && !formData.thresholdAdapter)
+    pendingTokenIndex !== null ||
+    (currentStep === 2 && !fundingComplete) ||
+    (currentStep === 3 && !formData.strategyAdapter) ||
+    (currentStep === 4 && !formData.thresholdAdapter)
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#03030f] text-foreground">
@@ -304,10 +470,20 @@ export default function DeployPage() {
               <div className="space-y-6">
                 <div>
                   <h2 className="mb-2 text-2xl font-semibold">Assets & Funding</h2>
-                  <p className="text-muted-foreground">Provide the token addresses, seed amounts, and fee</p>
+                  <p className="text-muted-foreground">Provide the token addresses, seed amounts, and pool name</p>
                 </div>
 
                 <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="poolName">Pool Name</Label>
+                    <Input
+                      id="poolName"
+                      placeholder="Curated Liquidity Pool"
+                      value={formData.poolName}
+                      onChange={(e) => handleInputChange("poolName", e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">Displayed to LPs and traders.</p>
+                  </div>
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor="token0">Token 0 Address</Label>
@@ -331,7 +507,7 @@ export default function DeployPage() {
                     </div>
                   </div>
 
-                  <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="space-y-4">
                     <div className="space-y-2">
                       <Label htmlFor="token0Amount">Token 0 Seed Amount</Label>
                       <Input
@@ -354,30 +530,73 @@ export default function DeployPage() {
                       />
                       <p className="text-xs text-muted-foreground">Amount of token1 to deposit.</p>
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="fee">Pool Fee (%)</Label>
-                      <Input
-                        id="fee"
-                        type="number"
-                        step="0.01"
-                        placeholder="0.3"
-                        value={formData.fee}
-                        onChange={(e) => handleInputChange("fee", e.target.value)}
-                      />
-                      <p className="text-xs text-muted-foreground">Fee tier applied to swaps.</p>
-                    </div>
                   </div>
 
-                  <div className="rounded-lg border border-white/10 bg-white/5 p-4">
-                    <div className="mb-2 text-sm font-medium">Initial Price Ratio</div>
-                    <div className="text-2xl font-bold text-primary">
-                      {formData.token0Amount && formData.token1Amount
-                        ? (Number.parseFloat(formData.token1Amount) / Number.parseFloat(formData.token0Amount)).toFixed(
-                            6,
-                          )
-                        : "0.000000"}
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <div>
+                      <h3 className="text-lg font-semibold">Fund Launchpad</h3>
+                      <p className="text-xs text-muted-foreground">
+                        Approve and transfer each token separately before moving to strategy configuration.
+                      </p>
                     </div>
-                    <div className="text-xs text-muted-foreground">Token1 per Token0</div>
+                    <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-3 rounded-xl border border-white/10 bg-[#050611]/60 p-4 text-sm">
+                        <div className="space-y-1">
+                          <p className="text-muted-foreground">Token 0</p>
+                          <p className="font-mono text-xs break-all">{formData.token0 || "0x000..."}</p>
+                          <p className="text-xs text-muted-foreground">Amount: {formData.token0Amount || "0"}</p>
+                        </div>
+                        <Button
+                          className="w-full"
+                          onClick={() => fundToken(0)}
+                          disabled={
+                            pendingTokenIndex !== null ||
+                            fundingStatus.token0 ||
+                            !formData.token0 ||
+                            !formData.token0Amount
+                          }
+                        >
+                          {pendingTokenIndex === 0
+                            ? "Funding token 0..."
+                            : fundingStatus.token0
+                              ? "Token 0 funded"
+                              : "Approve & Transfer Token 0"}
+                        </Button>
+                        {fundingStatus.token0 && (
+                          <p className="flex items-center gap-2 text-xs text-primary">
+                            <Check className="h-3 w-3" /> Ready for launchpad
+                          </p>
+                        )}
+                      </div>
+                      <div className="space-y-3 rounded-xl border border-white/10 bg-[#050611]/60 p-4 text-sm">
+                        <div className="space-y-1">
+                          <p className="text-muted-foreground">Token 1</p>
+                          <p className="font-mono text-xs break-all">{formData.token1 || "0x000..."}</p>
+                          <p className="text-xs text-muted-foreground">Amount: {formData.token1Amount || "0"}</p>
+                        </div>
+                        <Button
+                          className="w-full"
+                          onClick={() => fundToken(1)}
+                          disabled={
+                            pendingTokenIndex !== null ||
+                            fundingStatus.token1 ||
+                            !formData.token1 ||
+                            !formData.token1Amount
+                          }
+                        >
+                          {pendingTokenIndex === 1
+                            ? "Funding token 1..."
+                            : fundingStatus.token1
+                              ? "Token 1 funded"
+                              : "Approve & Transfer Token 1"}
+                        </Button>
+                        {fundingStatus.token1 && (
+                          <p className="flex items-center gap-2 text-xs text-primary">
+                            <Check className="h-3 w-3" /> Ready for launchpad
+                          </p>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -540,6 +759,10 @@ export default function DeployPage() {
                     <h3 className="mb-3 font-semibold">Launch Config</h3>
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
+                        <span className="text-muted-foreground">Pool Name:</span>
+                        <span className="font-semibold">{formData.poolName || "Not set"}</span>
+                      </div>
+                      <div className="flex justify-between">
                         <span className="text-muted-foreground">Token0 / Token1:</span>
                         <span className="font-mono text-xs">
                           {formData.token0 || "Not set"} / {formData.token1 || "Not set"}
@@ -552,11 +775,7 @@ export default function DeployPage() {
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Fee:</span>
-                        <span className="font-semibold">{formData.fee || "0"}%</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Strategy:</span>
+                        <span className="text-muted-foreground">Strategy Option:</span>
                         <span className="font-semibold">{selectedStrategy}</span>
                       </div>
                     </div>
@@ -564,11 +783,7 @@ export default function DeployPage() {
 
                   <div className="rounded-lg border border-white/10 bg-white/5 p-4">
                     <h3 className="mb-3 font-semibold">Adapters</h3>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Strategy Option:</span>
-                        <span className="font-semibold">{selectedStrategy}</span>
-                      </div>
+                    <div className="space-y-4 text-sm">
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Threshold Option:</span>
                         <span className="font-semibold">{selectedThreshold}</span>
@@ -610,6 +825,13 @@ export default function DeployPage() {
                       </div>
                     </div>
                   </div>
+
+                  {txHash && (
+                    <div className="rounded-lg border border-white/10 bg-white/5 p-4 text-xs">
+                      <p className="text-muted-foreground">Last deployment transaction</p>
+                      <p className="font-mono text-primary break-all">{txHash}</p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -632,9 +854,15 @@ export default function DeployPage() {
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               ) : (
-                <Button onClick={handleDeploy} className="gap-2">
-                  <Check className="h-4 w-4" />
-                  Deploy AMM
+                <Button onClick={handleDeploy} className="gap-2" disabled={isLaunchPending}>
+                  {isLaunchPending ? (
+                    "Deploying..."
+                  ) : (
+                    <>
+                      <Check className="h-4 w-4" />
+                      Deploy AMM
+                    </>
+                  )}
                 </Button>
               )}
             </div>

@@ -1,8 +1,7 @@
 // src/utils/config.ts
-import { scrollSepolia } from 'wagmi/chains'
 import { getDefaultConfig } from '@rainbow-me/rainbowkit'
+import { uniChainSepolia } from '@/components/UniChainSepolia'
 
-  
 // Sanitize the project ID to avoid stray quotes/semicolons that break the WalletConnect API URL
 const walletConnectProjectId = (process.env.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID || '').replace(/["';]/g, '').trim()
 
@@ -10,10 +9,8 @@ const walletConnectProjectId = (process.env.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_I
 const projectId = walletConnectProjectId || 'fallback-project-id-for-development'
 
 export const config = getDefaultConfig({
-  appName: 'StableCoin',
+  appName: 'PropAMM',
   projectId: projectId,
-  chains: [
-    scrollSepolia,
-  ],
+  chains: [uniChainSepolia],
   ssr: true,
 })
