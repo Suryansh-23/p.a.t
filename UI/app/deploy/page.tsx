@@ -7,12 +7,25 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ChevronLeft, ChevronRight, Check } from "lucide-react"
-import { useChainId, useWriteContract, useAccount, usePublicClient } from "wagmi"
+import { useChainId, useWriteContract, useAccount, usePublicClient, useWalletClient } from "wagmi"
 import { parseUnits } from "viem"
 import { PropAMMContracts } from "@/utils/addresses"
 import { PropAMMLaunchPadAbi } from "@/utils/abi/PropAMMLaunchPad"
 import { uniChainSepolia } from "@/components/UniChainSepolia"
 import { erc20Abi } from "@/utils/abi/erc20"
+import {
+  deployContract,
+  getStrategyBytecode,
+  getThresholdBytecode,
+  encodeStrategyConstructorArgs,
+  encodeThresholdConstructorArgs,
+} from "@/utils/contractDeployer"
+import {
+  compileSolidityContract,
+  extractContractName,
+  validateStrategyAdapter,
+  validateThresholdAdapter,
+} from "@/utils/solidityCompiler"
 
 const STEPS = [
   { id: 1, title: "Curator Details", description: "Who is managing this pool" },
@@ -120,38 +133,182 @@ export default function DeployPage() {
   const chainId = useChainId()
   const { address } = useAccount()
   const publicClient = usePublicClient({ chainId: uniChainSepolia.id })
+  const { data: walletClient } = useWalletClient({ chainId: uniChainSepolia.id })
   const { writeContractAsync, isPending: isLaunchPending } = useWriteContract()
   const [fundingStatus, setFundingStatus] = useState({ token0: false, token1: false })
   const [pendingTokenIndex, setPendingTokenIndex] = useState<0 | 1 | null>(null)
+  const [isDeployingStrategy, setIsDeployingStrategy] = useState(false)
+  const [isDeployingThreshold, setIsDeployingThreshold] = useState(false)
 
   const generateMockAddress = () =>
     `0x${Array.from({ length: 40 })
       .map(() => Math.floor(Math.random() * 16).toString(16))
       .join("")}`
 
-  const handleStrategyDeploy = () => {
-    const code = selectedStrategy === "custom" ? formData.customStrategyCode.trim() : STRATEGY_SNIPPETS[selectedStrategy]
-    if (!code) {
-      alert("Please provide adapter code before deploying.")
+  const handleStrategyDeploy = async () => {
+    // Validation
+    if (!address) {
+      alert("Please connect your wallet before deploying.")
       return
     }
-    const address = generateMockAddress()
-    setFormData((prev) => ({ ...prev, strategyAdapter: address }))
-    alert(`Strategy adapter deployed at ${address}`)
+    if (chainId && chainId !== uniChainSepolia.id) {
+      alert("Please switch to UniChain Sepolia to deploy the adapter.")
+      return
+    }
+    if (!walletClient || !publicClient) {
+      alert("Wallet client not available. Please refresh the page.")
+      return
+    }
+
+    setIsDeployingStrategy(true)
+    try {
+      let bytecode: string
+      let constructorArgs: `0x${string}`
+
+      // Handle custom code
+      if (selectedStrategy === "custom") {
+        const customCode = formData.customStrategyCode.trim()
+        if (!customCode) {
+          alert("Please provide your custom adapter contract code before deploying.")
+          return
+        }
+
+        // Validate the contract has required functions (just a warning, not blocking)
+        const validation = validateStrategyAdapter(customCode)
+        if (!validation.valid) {
+          console.warn(`Strategy adapter validation warning: ${validation.error}`)
+          // Show warning but don't block deployment
+          if (!confirm(`Warning: ${validation.error}\n\nDo you want to proceed with deployment anyway?`)) {
+            return
+          }
+        }
+
+        // Compile the custom contract
+        alert("Compiling your contract... This may take a few seconds.")
+        const contractName = extractContractName(customCode)
+        const result = await compileSolidityContract(customCode, contractName || undefined)
+
+        if (!result.success) {
+          const errorMsg = result.errors?.join('\n\n') || 'Unknown compilation error'
+          alert(`Compilation failed:\n\n${errorMsg}`)
+          return
+        }
+
+        if (result.warnings && result.warnings.length > 0) {
+          console.warn("Compilation warnings:", result.warnings)
+        }
+
+        bytecode = result.bytecode!
+        constructorArgs = '0x'
+      } else {
+        // Get bytecode for preset strategy
+        bytecode = getStrategyBytecode(selectedStrategy) || ''
+        if (!bytecode) {
+          alert("Strategy bytecode not found. Please select a valid preset.")
+          return
+        }
+        constructorArgs = encodeStrategyConstructorArgs()
+      }
+
+      // Deploy the contract
+      const deployedAddress = await deployContract({
+        bytecode,
+        constructorArgs,
+        walletClient,
+        publicClient,
+      })
+
+      setFormData((prev) => ({ ...prev, strategyAdapter: deployedAddress }))
+      alert(`Strategy adapter deployed successfully at ${deployedAddress}`)
+    } catch (error) {
+      console.error("Strategy deployment error:", error)
+      alert((error as Error).message || "Failed to deploy strategy adapter.")
+    } finally {
+      setIsDeployingStrategy(false)
+    }
   }
 
-  const handleThresholdDeploy = () => {
-    const code =
-      selectedThreshold === "thresholdCustom"
-        ? formData.customThresholdCode.trim()
-        : THRESHOLD_SNIPPETS[selectedThreshold as keyof typeof THRESHOLD_SNIPPETS]
-    if (!code) {
-      alert("Please provide threshold code before deploying.")
+  const handleThresholdDeploy = async () => {
+    // Validation
+    if (!address) {
+      alert("Please connect your wallet before deploying.")
       return
     }
-    const address = generateMockAddress()
-    setFormData((prev) => ({ ...prev, thresholdAdapter: address }))
-    alert(`Threshold adapter deployed at ${address}`)
+    if (chainId && chainId !== uniChainSepolia.id) {
+      alert("Please switch to UniChain Sepolia to deploy the adapter.")
+      return
+    }
+    if (!walletClient || !publicClient) {
+      alert("Wallet client not available. Please refresh the page.")
+      return
+    }
+
+    setIsDeployingThreshold(true)
+    try {
+      let bytecode: string
+      let constructorArgs: `0x${string}`
+
+      // Handle custom code
+      if (selectedThreshold === "thresholdCustom") {
+        const customCode = formData.customThresholdCode.trim()
+        if (!customCode) {
+          alert("Please provide your custom threshold module code before deploying.")
+          return
+        }
+
+        // Validate the contract has required functions (just a warning, not blocking)
+        const validation = validateThresholdAdapter(customCode)
+        if (!validation.valid) {
+          console.warn(`Threshold adapter validation warning: ${validation.error}`)
+          // Show warning but don't block deployment
+          if (!confirm(`Warning: ${validation.error}\n\nDo you want to proceed with deployment anyway?`)) {
+            return
+          }
+        }
+
+        // Compile the custom contract
+        alert("Compiling your contract... This may take a few seconds.")
+        const contractName = extractContractName(customCode)
+        const result = await compileSolidityContract(customCode, contractName || undefined)
+
+        if (!result.success) {
+          const errorMsg = result.errors?.join('\n\n') || 'Unknown compilation error'
+          alert(`Compilation failed:\n\n${errorMsg}`)
+          return
+        }
+
+        if (result.warnings && result.warnings.length > 0) {
+          console.warn("Compilation warnings:", result.warnings)
+        }
+
+        bytecode = result.bytecode!
+        constructorArgs = '0x'
+      } else {
+        // Get bytecode for preset threshold
+        bytecode = getThresholdBytecode(selectedThreshold) || ''
+        if (!bytecode) {
+          alert("Threshold bytecode not found. Please select a valid preset.")
+          return
+        }
+        constructorArgs = encodeThresholdConstructorArgs()
+      }
+
+      // Deploy the contract
+      const deployedAddress = await deployContract({
+        bytecode,
+        constructorArgs,
+        walletClient,
+        publicClient,
+      })
+
+      setFormData((prev) => ({ ...prev, thresholdAdapter: deployedAddress }))
+      alert(`Threshold adapter deployed successfully at ${deployedAddress}`)
+    } catch (error) {
+      console.error("Threshold deployment error:", error)
+      alert((error as Error).message || "Failed to deploy threshold adapter.")
+    } finally {
+      setIsDeployingThreshold(false)
+    }
   }
 
   const handleNext = () => {
@@ -193,7 +350,7 @@ export default function DeployPage() {
     try {
       return parseUnits(value || "0", decimals)
     } catch {
-      return 0n
+      return BigInt(0)
     }
   }
 
@@ -245,21 +402,34 @@ export default function DeployPage() {
     }
 
     const amount = await getTokenAmount(tokenAddress as `0x${string}`, tokenAmount)
-    if (amount === 0n) {
+    if (amount === BigInt(0)) {
       alert("Seed amount must be greater than zero.")
       return false
     }
 
     setPendingTokenIndex(tokenIndex)
     try {
-      const approveHash = await writeContractAsync({
+      // Check current allowance
+      const currentAllowance = await publicClient.readContract({
         abi: erc20Abi,
         address: tokenAddress as `0x${string}`,
-        functionName: "approve",
-        args: [launchpadAddress, amount],
-        chainId: uniChainSepolia.id,
+        functionName: "allowance",
+        args: [address, launchpadAddress],
       })
-      await publicClient.waitForTransactionReceipt({ hash: approveHash })
+
+      // Only approve if current allowance is insufficient
+      if (currentAllowance < amount) {
+        const approveHash = await writeContractAsync({
+          abi: erc20Abi,
+          address: tokenAddress as `0x${string}`,
+          functionName: "approve",
+          args: [launchpadAddress, amount],
+          chainId: uniChainSepolia.id,
+        })
+        await publicClient.waitForTransactionReceipt({ hash: approveHash })
+      }
+
+      // Transfer tokens to launchpad
       const transferHash = await writeContractAsync({
         abi: erc20Abi,
         address: tokenAddress as `0x${string}`,
@@ -268,10 +438,11 @@ export default function DeployPage() {
         chainId: uniChainSepolia.id,
       })
       await publicClient.waitForTransactionReceipt({ hash: transferHash })
+      
       setFundingStatus((prev) =>
         tokenIndex === 0 ? { ...prev, token0: true } : { ...prev, token1: true }
       )
-      alert(`Token ${tokenLabel} approved and transferred to the launchpad.`)
+      alert(`Token ${tokenLabel} transferred to the launchpad successfully.`)
       return true
     } catch (error) {
       console.error(error)
@@ -351,6 +522,8 @@ export default function DeployPage() {
 
   const isNextDisabled =
     pendingTokenIndex !== null ||
+    isDeployingStrategy ||
+    isDeployingThreshold ||
     (currentStep === 2 && !fundingComplete) ||
     (currentStep === 3 && !formData.strategyAdapter) ||
     (currentStep === 4 && !formData.thresholdAdapter)
@@ -650,13 +823,24 @@ export default function DeployPage() {
                       </div>
                     )}
                     <div className="mt-4 flex flex-col gap-3">
-                      <Button onClick={handleStrategyDeploy} className="w-full">
-                        Deploy Strategy Adapter
+                      <Button 
+                        onClick={handleStrategyDeploy} 
+                        className="w-full"
+                        disabled={isDeployingStrategy || !!formData.strategyAdapter}
+                      >
+                        {isDeployingStrategy
+                          ? "Deploying Strategy Adapter..."
+                          : formData.strategyAdapter
+                            ? "Strategy Adapter Deployed"
+                            : "Deploy Strategy Adapter"}
                       </Button>
                       {formData.strategyAdapter && (
                         <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-xs">
                           <p className="text-muted-foreground">Adapter deployed at:</p>
-                          <p className="font-mono text-primary">{formData.strategyAdapter}</p>
+                          <p className="font-mono text-primary break-all">{formData.strategyAdapter}</p>
+                          <p className="flex items-center gap-2 text-xs text-primary mt-2">
+                            <Check className="h-3 w-3" /> Ready for next step
+                          </p>
                         </div>
                       )}
                     </div>
@@ -713,13 +897,25 @@ export default function DeployPage() {
                       </div>
                     )}
                     <div className="mt-4 flex flex-col gap-3">
-                      <Button onClick={handleThresholdDeploy} className="w-full" variant="outline">
-                        Deploy Threshold Adapter
+                      <Button 
+                        onClick={handleThresholdDeploy} 
+                        className="w-full" 
+                        variant="outline"
+                        disabled={isDeployingThreshold || !!formData.thresholdAdapter}
+                      >
+                        {isDeployingThreshold
+                          ? "Deploying Threshold Adapter..."
+                          : formData.thresholdAdapter
+                            ? "Threshold Adapter Deployed"
+                            : "Deploy Threshold Adapter"}
                       </Button>
                       {formData.thresholdAdapter && (
                         <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-xs">
                           <p className="text-muted-foreground">Threshold adapter deployed at:</p>
-                          <p className="font-mono text-primary">{formData.thresholdAdapter}</p>
+                          <p className="font-mono text-primary break-all">{formData.thresholdAdapter}</p>
+                          <p className="flex items-center gap-2 text-xs text-primary mt-2">
+                            <Check className="h-3 w-3" /> Ready for launch
+                          </p>
                         </div>
                       )}
                     </div>
