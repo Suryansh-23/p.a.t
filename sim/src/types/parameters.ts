@@ -28,6 +28,9 @@ export interface PriceDataPoint {
 
   /** Lower bound (mid - spread) */
   lowerBound: number;
+
+  /** Optional confidence interval (standard deviation) from Pyth */
+  confidence?: number;
 }
 
 export interface SpreadDataPoint {

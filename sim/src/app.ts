@@ -6,6 +6,7 @@ import blessed from "blessed";
 import type { Widgets } from "blessed";
 import { ParameterManager } from "./services/parameterManager.js";
 import { PriceSimulator } from "./services/priceSimulator.js";
+import { PriceChart } from "./components/priceChart.js";
 import { APP_NAME, KEY_BINDINGS } from "./constants.js";
 import type { AppState } from "./types/state.js";
 import { DEFAULT_PARAMETERS, UI_CONFIG } from "./config/defaults.js";
@@ -15,8 +16,10 @@ export class App {
   private screen!: Widgets.Screen;
   private parameterManager: ParameterManager;
   private priceSimulator: PriceSimulator;
+  private priceChart?: PriceChart;
   private state: AppState;
   private updateTimer?: NodeJS.Timeout;
+  private priceSubscription?: () => void;
 
   constructor() {
     this.parameterManager = new ParameterManager();
@@ -200,17 +203,34 @@ export class App {
       },
     });
 
-    // Placeholder content for visualization
-    const vizContent = blessed.text({
+    // Price chart with spread visualization
+    this.priceChart = new PriceChart(vizPanel, {
       top: 1,
       left: 1,
       width: "100%-2",
-      height: "100%-2",
-      content: this.renderVisualizationContent(),
+      height: "50%-1",
+      showSpreadBands: true,
+      maxDataPoints: 100,
+    });
+
+    // Current spread info box
+    const spreadInfo = blessed.box({
+      top: "50%",
+      left: 1,
+      width: "100%-2",
+      height: "50%-1",
+      label: " {bold}Current Spread Info{/bold} ",
       tags: true,
+      border: {
+        type: "line",
+      },
       style: {
         fg: "white",
+        border: {
+          fg: "cyan",
+        },
       },
+      content: this.renderSpreadInfo(),
     });
 
     // Status bar
@@ -234,7 +254,7 @@ export class App {
 
     // Append to containers
     parameterPanel.append(paramContent);
-    vizPanel.append(vizContent);
+    vizPanel.append(spreadInfo);
     mainContainer.append(parameterPanel);
     mainContainer.append(vizPanel);
 
@@ -244,7 +264,7 @@ export class App {
     // Store references for updates
     this.screen.data = {
       paramContent,
-      vizContent,
+      spreadInfo,
       statusBar,
       subtitle,
     };
@@ -317,9 +337,9 @@ export class App {
   }
 
   /**
-   * Render visualization content
+   * Render current spread information
    */
-  private renderVisualizationContent(): string {
+  private renderSpreadInfo(): string {
     const currentPrice = this.priceSimulator.getCurrentPrice();
     const params = this.state.parameters;
 
@@ -340,25 +360,50 @@ export class App {
       100
     ).toFixed(3);
 
+    const stats = this.priceChart?.getStats();
+    const mode = this.priceSimulator.getMode();
+    const connected = this.priceSimulator.isConnected();
+
     return `
+{bold}{white-fg}Data Source:{/white-fg}{/bold} ${
+      mode === "live"
+        ? "{green-fg}Pyth Network (Live){/green-fg}"
+        : "{yellow-fg}Mock Data{/yellow-fg}"
+    }
+{white-fg}Connection:{/white-fg} ${
+      connected
+        ? "{green-fg}●{/green-fg} Connected"
+        : "{red-fg}●{/red-fg} Disconnected"
+    }
+
+{gray-fg}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{/gray-fg}
+
 {bold}{white-fg}Current Price:{/white-fg} {cyan-fg}${dataPoint.midPrice.toFixed(
       2
     )}{/cyan-fg}{/bold}
 
-{magenta-fg}Upper Bound:{/magenta-fg} {yellow-fg}${dataPoint.upperBound.toFixed(
+{magenta-fg}Upper Spread:{/magenta-fg} {yellow-fg}${dataPoint.upperBound.toFixed(
       4
     )}{/yellow-fg} {green-fg}(+${upperChange}%){/green-fg}
-{magenta-fg}Lower Bound:{/magenta-fg} {yellow-fg}${dataPoint.lowerBound.toFixed(
+{blue-fg}Lower Spread:{/blue-fg} {yellow-fg}${dataPoint.lowerBound.toFixed(
       4
     )}{/yellow-fg} {red-fg}(${lowerChange}%){/red-fg}
 
 {white-fg}Spread Width:{/white-fg} {cyan-fg}${(
       dataPoint.upperBound - dataPoint.lowerBound
     ).toFixed(4)}{/cyan-fg}
-
+${
+  stats
+    ? `
 {gray-fg}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{/gray-fg}
-{gray-fg}Chart visualization will be implemented with blessed-contrib{/gray-fg}
-{gray-fg}This will show real-time price movement with spread bands{/gray-fg}
+
+{white-fg}Statistics (${this.state.priceHistory.length} pts):{/white-fg}
+{gray-fg}Min:{/gray-fg} ${stats.min.toFixed(
+        2
+      )}  {gray-fg}Max:{/gray-fg} ${stats.max.toFixed(2)}
+{gray-fg}Avg:{/gray-fg} ${stats.avg.toFixed(2)}`
+    : ""
+}
     `.trim();
   }
 
@@ -404,38 +449,71 @@ export class App {
   /**
    * Start price update loop
    */
-  private startPriceUpdates(): void {
-    const update = () => {
-      if (!this.state.isPaused) {
-        // Generate new price
-        const newPrice = this.priceSimulator.generateNextPrice();
+  private async startPriceUpdates(): Promise<void> {
+    const mode = this.priceSimulator.getMode();
 
-        // Create data point
-        const dataPoint = generatePriceDataPoint(
-          Date.now(),
-          newPrice,
-          this.state.parameters,
-          0
-        );
+    if (mode === "live") {
+      // Subscribe to Pyth price updates (real-time SSE)
+      this.priceSubscription = this.priceSimulator.subscribe(
+        (price: number, timestamp: number, confidence?: number) => {
+          if (!this.state.isPaused) {
+            this.handlePriceUpdate(price, timestamp, confidence);
+          }
+        }
+      );
 
-        // Update history
-        this.state.priceHistory.push(dataPoint);
-        if (this.state.priceHistory.length > UI_CONFIG.maxHistoryPoints) {
-          this.state.priceHistory.shift();
+      // Fetch initial price
+      const initialPrice = await this.priceSimulator.fetchLatestPrice();
+      if (initialPrice) {
+        this.handlePriceUpdate(initialPrice, Date.now());
+        this.state.connectionStatus = "connected";
+      }
+    } else {
+      // Mock data mode - use timer-based updates
+      const update = () => {
+        if (!this.state.isPaused) {
+          const newPrice = this.priceSimulator.generateNextPrice();
+          this.handlePriceUpdate(newPrice, Date.now());
         }
 
-        this.state.lastUpdate = new Date();
-        this.updateUI();
-      }
+        this.updateTimer = setTimeout(
+          update,
+          this.state.parameters.updateFrequency
+        );
+      };
 
-      // Schedule next update
-      this.updateTimer = setTimeout(
-        update,
-        this.state.parameters.updateFrequency
-      );
-    };
+      update();
+    }
+  }
 
-    update();
+  /**
+   * Handle a price update from either Pyth or mock simulator
+   */
+  private handlePriceUpdate(
+    price: number,
+    timestamp: number,
+    confidence?: number
+  ): void {
+    // Create data point with spread calculations
+    const dataPoint = generatePriceDataPoint(
+      timestamp,
+      price,
+      this.state.parameters,
+      0,
+      confidence
+    );
+
+    // Update history
+    this.state.priceHistory.push(dataPoint);
+    if (this.state.priceHistory.length > UI_CONFIG.maxHistoryPoints) {
+      this.state.priceHistory.shift();
+    }
+
+    // Update chart
+    this.priceChart?.addDataPoint(dataPoint);
+
+    this.state.lastUpdate = new Date();
+    this.updateUI();
   }
 
   /**
@@ -448,8 +526,8 @@ export class App {
       data.paramContent.setContent(this.renderParameterContent());
     }
 
-    if (data.vizContent) {
-      data.vizContent.setContent(this.renderVisualizationContent());
+    if (data.spreadInfo) {
+      data.spreadInfo.setContent(this.renderSpreadInfo());
     }
 
     if (data.statusBar) {
@@ -515,11 +593,19 @@ export class App {
   }
 
   /**
-   * Cleanup resources
+   * Cleanup resources before exit
    */
   private cleanup(): void {
     if (this.updateTimer) {
       clearTimeout(this.updateTimer);
     }
+
+    // Unsubscribe from Pyth price updates
+    if (this.priceSubscription) {
+      this.priceSubscription();
+    }
+
+    // Cleanup price simulator
+    this.priceSimulator.destroy();
   }
 }

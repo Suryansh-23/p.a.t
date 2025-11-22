@@ -1,13 +1,20 @@
 /**
- * Mock price simulator for generating realistic price movements
+ * Price data manager - combines real Pyth data with mock simulation fallback
  */
 
 import { MOCK_PRICE_CONFIG } from "../config/defaults.js";
+import { config } from "../config/index.js";
+import {
+  PythPriceService,
+  type NormalizedPriceData,
+} from "./pythPriceService.js";
 
 export class PriceSimulator {
   private currentPrice: number;
   private volatility: number;
   private drift: number;
+  private pythService?: PythPriceService;
+  private useMockData: boolean;
 
   constructor(
     initialPrice: number = MOCK_PRICE_CONFIG.initialPrice,
@@ -17,12 +24,46 @@ export class PriceSimulator {
     this.currentPrice = initialPrice;
     this.volatility = volatility;
     this.drift = drift;
+    this.useMockData = config.ui.enableMockData;
+
+    // Initialize Pyth service if not using mock data
+    if (!this.useMockData) {
+      this.pythService = new PythPriceService();
+    }
+  }
+
+  /**
+   * Subscribe to price updates (real or simulated)
+   * @param callback Function called with each price update
+   * @returns Unsubscribe function
+   */
+  subscribe(
+    callback: (price: number, timestamp: number, confidence?: number) => void
+  ): () => void {
+    if (this.useMockData) {
+      // For mock data, we'll use a timer-based approach
+      // This will be called by the app's update loop
+      return () => {}; // No-op for mock mode
+    } else if (this.pythService) {
+      // Subscribe to real Pyth price updates
+      return this.pythService.subscribe((data: NormalizedPriceData) => {
+        this.currentPrice = data.price;
+        callback(data.price, data.timestamp, data.confidence);
+      });
+    }
+    return () => {};
   }
 
   /**
    * Generate next price using Brownian motion (geometric random walk)
+   * Only used in mock mode
    */
   generateNextPrice(): number {
+    if (!this.useMockData) {
+      // In real mode, just return the current price from Pyth
+      return this.currentPrice;
+    }
+
     // Standard normal random variable (Box-Muller transform)
     const u1 = Math.random();
     const u2 = Math.random();
@@ -41,10 +82,44 @@ export class PriceSimulator {
   }
 
   /**
+   * Get latest price from Pyth (async, one-time fetch)
+   */
+  async fetchLatestPrice(): Promise<number | null> {
+    if (this.useMockData || !this.pythService) {
+      return this.currentPrice;
+    }
+
+    const priceData = await this.pythService.getLatestPrice();
+    if (priceData) {
+      this.currentPrice = priceData.price;
+      return priceData.price;
+    }
+
+    return null;
+  }
+
+  /**
    * Get current price without generating new one
    */
   getCurrentPrice(): number {
     return this.currentPrice;
+  }
+
+  /**
+   * Check if connected to Pyth stream
+   */
+  isConnected(): boolean {
+    if (this.useMockData) {
+      return true; // Mock mode is always "connected"
+    }
+    return this.pythService?.isStreamConnected() ?? false;
+  }
+
+  /**
+   * Get data source mode
+   */
+  getMode(): "mock" | "live" {
+    return this.useMockData ? "mock" : "live";
   }
 
   /**
@@ -55,7 +130,7 @@ export class PriceSimulator {
   }
 
   /**
-   * Update volatility parameter
+   * Update volatility parameter (mock mode only)
    */
   setVolatility(volatility: number): void {
     this.volatility = volatility;
@@ -80,5 +155,12 @@ export class PriceSimulator {
       returns.length;
 
     return Math.sqrt(variance);
+  }
+
+  /**
+   * Clean up resources
+   */
+  destroy(): void {
+    this.pythService?.destroy();
   }
 }

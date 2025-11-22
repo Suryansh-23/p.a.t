@@ -58,8 +58,14 @@ export const BLESSED_COLORS = {
   warning: "yellow",
   error: "red",
   info: "blue",
-  chartLine: "white",
-  chartFill: "magenta",
+  chart: {
+    line: "white",
+    fill: "magenta",
+    midPrice: "cyan",
+    upperSpread: "magenta",
+    lowerSpread: "blue",
+    baseline: "gray",
+  },
 };
 
 // Unicode box-drawing characters for beautiful borders

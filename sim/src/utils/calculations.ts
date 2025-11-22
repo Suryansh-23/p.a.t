@@ -73,7 +73,8 @@ export function generatePriceDataPoint(
   timestamp: number,
   midPrice: number,
   params: SequencerParameters,
-  volatility: number = 0
+  volatility: number = 0,
+  confidence?: number
 ): PriceDataPoint {
   const spreadBps = calculateDynamicSpread(params, volatility);
   const { upper, lower } = calculateSpreadBounds(midPrice, spreadBps);
@@ -83,5 +84,6 @@ export function generatePriceDataPoint(
     midPrice,
     upperBound: upper,
     lowerBound: lower,
+    confidence,
   };
 }
