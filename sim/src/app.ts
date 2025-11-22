@@ -6,10 +6,8 @@ import blessed from "blessed";
 import type { Widgets } from "blessed";
 import { ParameterManager } from "./services/parameterManager.js";
 import { PriceSimulator } from "./services/priceSimulator.js";
-import { APP_NAME, APP_VERSION, KEY_BINDINGS } from "./constants.js";
-import { BLESSED_COLORS } from "./utils/colors.js";
+import { APP_NAME, KEY_BINDINGS } from "./constants.js";
 import type { AppState } from "./types/state.js";
-import type { PriceDataPoint } from "./types/parameters.js";
 import { DEFAULT_PARAMETERS, UI_CONFIG } from "./config/defaults.js";
 import { generatePriceDataPoint } from "./utils/calculations.js";
 
@@ -70,33 +68,79 @@ export class App {
    * Setup main layout
    */
   private setupLayout(): void {
-    // Header
+    // Header with ASCII art
     const header = blessed.box({
       top: 0,
       left: 0,
       width: "100%",
-      height: 3,
-      content: `  ${APP_NAME} v${APP_VERSION}`,
-      tags: true,
+      height: 8,
       border: {
         type: "line",
       },
       style: {
-        fg: BLESSED_COLORS.text,
         border: {
-          fg: BLESSED_COLORS.border,
+          fg: "cyan",
         },
       },
     });
 
+    // Rainbow trail
+    const rainbow = blessed.box({
+      parent: header,
+      top: 1,
+      left: 1,
+      width: 12,
+      height: 3,
+      content:
+        "{red-fg}━━{/red-fg}{yellow-fg}━━{/yellow-fg}{green-fg}━━{/green-fg}{cyan-fg}━━{/cyan-fg}{blue-fg}━━{/blue-fg}{magenta-fg}━━{/magenta-fg}\n{red-fg}━━{/red-fg}{yellow-fg}━━{/yellow-fg}{green-fg}━━{/green-fg}{cyan-fg}━━{/cyan-fg}{blue-fg}━━{/blue-fg}{magenta-fg}━━{/magenta-fg}\n{red-fg}━━{/red-fg}{yellow-fg}━━{/yellow-fg}{green-fg}━━{/green-fg}{cyan-fg}━━{/cyan-fg}{blue-fg}━━{/blue-fg}{magenta-fg}━━{/magenta-fg}",
+      tags: true,
+    });
+
+    // Nyan cat
+    const nyanCat = blessed.box({
+      parent: header,
+      top: 3,
+      left: 1,
+      width: 9,
+      height: 3,
+      content:
+        "{magenta-fg}+~,_,~+{/magenta-fg}\n{magenta-fg}( @.@ ){/magenta-fg}\n{magenta-fg}( >^< ){/magenta-fg}",
+      tags: true,
+    });
+
+    // Main title
+    const title = blessed.box({
+      parent: header,
+      top: 1,
+      left: 13,
+      width: "100%-26",
+      height: 6,
+      content:
+        "{bold}{cyan-fg}██╗    ██╗██╗███╗   ██╗████████╗███████╗██████╗  ██████╗██╗   ██╗████████╗███████╗{/cyan-fg}{/bold}\n{bold}{cyan-fg}██║    ██║██║████╗  ██║╚══██╔══╝██╔════╝██╔══██╗██╔════╝██║   ██║╚══██╔══╝██╔════╝{/cyan-fg}{/bold}\n{bold}{cyan-fg}██║ █╗ ██║██║██╔██╗ ██║   ██║   █████╗  ██████╔╝██║     ██║   ██║   ██║   █████╗  {/cyan-fg}{/bold}\n{bold}{cyan-fg}██║███╗██║██║██║╚██╗██║   ██║   ██╔══╝  ██╔══██╗██║     ██║   ██║   ██║   ██╔══╝  {/cyan-fg}{/bold}\n{bold}{cyan-fg}╚███╔███╔╝██║██║ ╚████║   ██║   ███████╗██║  ██║╚██████╗╚██████╔╝   ██║   ███████╗{/cyan-fg}{/bold}\n{bold}{cyan-fg} ╚══╝╚══╝ ╚═╝╚═╝  ╚═══╝   ╚═╝   ╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝    ╚═╝   ╚══════╝{/cyan-fg}{/bold}",
+      tags: true,
+    });
+
+    // Subtitle and status
+    const subtitle = blessed.box({
+      parent: header,
+      top: 6,
+      left: 2,
+      width: "100%-4",
+      height: 1,
+      content: this.renderSubtitle(),
+      tags: true,
+    });
+
+    this.screen.append(header);
+
     // Main container
     const mainContainer = blessed.box({
-      top: 3,
+      top: 8,
       left: 0,
       width: "100%",
-      height: "100%-6",
+      height: "100%-11",
       style: {
-        fg: BLESSED_COLORS.text,
+        fg: "white",
       },
     });
 
@@ -106,14 +150,18 @@ export class App {
       left: 0,
       width: "30%",
       height: "100%",
-      label: " Parameters ",
+      label: " {bold}Parameters{/bold} ",
+      tags: true,
       border: {
         type: "line",
       },
       style: {
-        fg: BLESSED_COLORS.text,
+        fg: "white",
         border: {
-          fg: BLESSED_COLORS.border,
+          fg: "magenta",
+        },
+        label: {
+          fg: "cyan",
         },
       },
     });
@@ -124,14 +172,18 @@ export class App {
       left: "30%",
       width: "70%",
       height: "100%",
-      label: " Price & Spread Visualization ",
+      label: " {bold}Price & Spread Visualization{/bold} ",
+      tags: true,
       border: {
         type: "line",
       },
       style: {
-        fg: BLESSED_COLORS.text,
+        fg: "white",
         border: {
-          fg: BLESSED_COLORS.border,
+          fg: "magenta",
+        },
+        label: {
+          fg: "cyan",
         },
       },
     });
@@ -143,6 +195,9 @@ export class App {
       width: "100%-2",
       content: this.renderParameterContent(),
       tags: true,
+      style: {
+        fg: "white",
+      },
     });
 
     // Placeholder content for visualization
@@ -153,6 +208,9 @@ export class App {
       height: "100%-2",
       content: this.renderVisualizationContent(),
       tags: true,
+      style: {
+        fg: "white",
+      },
     });
 
     // Status bar
@@ -167,9 +225,9 @@ export class App {
         type: "line",
       },
       style: {
-        fg: BLESSED_COLORS.text,
+        fg: "white",
         border: {
-          fg: BLESSED_COLORS.border,
+          fg: "cyan",
         },
       },
     });
@@ -180,7 +238,6 @@ export class App {
     mainContainer.append(parameterPanel);
     mainContainer.append(vizPanel);
 
-    this.screen.append(header);
     this.screen.append(mainContainer);
     this.screen.append(statusBar);
 
@@ -189,7 +246,36 @@ export class App {
       paramContent,
       vizContent,
       statusBar,
+      subtitle,
     };
+  }
+
+  /**
+   * Render subtitle with status
+   */
+  private renderSubtitle(): string {
+    const status = this.state.isPaused
+      ? "{yellow-fg}PAUSED{/yellow-fg}"
+      : "{green-fg}RUNNING{/green-fg}";
+    return `                 {magenta-fg}P.A.T Dashboard{/magenta-fg}                                   {white-fg}[{/white-fg}${status}{white-fg}]{/white-fg}`;
+  }
+
+  /**
+   * Render ASCII art header (deprecated - kept for reference)
+   */
+  private renderHeader(): string {
+    const status = this.state.isPaused
+      ? "{yellow-fg}PAUSED{/yellow-fg}"
+      : "{green-fg}RUNNING{/green-fg}";
+    return `
+{red-fg}━━{/red-fg}{yellow-fg}━━{/yellow-fg}{green-fg}━━{/green-fg}{cyan-fg}━━{/cyan-fg}{blue-fg}━━{/blue-fg}{magenta-fg}━━  {/magenta-fg}{bold}{cyan-fg}██╗    ██╗██╗███╗   ██╗████████╗███████╗██████╗  ██████╗██╗   ██╗████████╗███████╗{/cyan-fg}{/bold}
+{red-fg}━━{/red-fg}{yellow-fg}━━{/yellow-fg}{green-fg}━━{/green-fg}{cyan-fg}━━{/cyan-fg}{blue-fg}━━{/blue-fg}{magenta-fg}━━  {/magenta-fg}{bold}{cyan-fg}██║    ██║██║████╗  ██║╚══██╔══╝██╔════╝██╔══██╗██╔════╝██║   ██║╚══██╔══╝██╔════╝{/cyan-fg}{/bold}
+{red-fg}━━{/red-fg}{yellow-fg}━━{/yellow-fg}{green-fg}━━{/green-fg}{cyan-fg}━━{/cyan-fg}{blue-fg}━━{/blue-fg}{magenta-fg}━━  {/magenta-fg}{bold}{cyan-fg}██║ █╗ ██║██║██╔██╗ ██║   ██║   █████╗  ██████╔╝██║     ██║   ██║   ██║   █████╗  {/cyan-fg}{/bold}
+{magenta-fg}+~,_,~+  {/magenta-fg}{bold}{cyan-fg}██║███╗██║██║██║╚██╗██║   ██║   ██╔══╝  ██╔══██╗██║     ██║   ██║   ██║   ██╔══╝  {/cyan-fg}{/bold}
+{magenta-fg}( @.@ )  {/magenta-fg}{bold}{cyan-fg}╚███╔███╔╝██║██║ ╚████║   ██║   ███████╗██║  ██║╚██████╗╚██████╔╝   ██║   ███████╗{/cyan-fg}{/bold}
+{magenta-fg}( >^< )  {/magenta-fg}{bold}{cyan-fg} ╚══╝╚══╝ ╚═╝╚═╝  ╚═══╝   ╚═╝   ╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝    ╚═╝   ╚══════╝{/cyan-fg}{/bold}
+                  {magenta-fg}P.A.T Dashboard{/magenta-fg}                                   {white-fg}[{/white-fg}${status}{white-fg}]{/white-fg}
+    `.trim();
   }
 
   /**
@@ -199,26 +285,34 @@ export class App {
     const params = this.state.parameters;
 
     return `
-{bold}Update Frequency{/bold}
-Block Time: ${params.updateFrequency} ms
+{bold}{white-fg}Update Frequency{/white-fg}{/bold}
+{cyan-fg}Block Time:{/cyan-fg} {yellow-fg}${
+      params.updateFrequency
+    }{/yellow-fg} ms
 
-{bold}Spread Range{/bold}
-Min: ${params.spreadRange.min} bps (${(params.spreadRange.min / 100).toFixed(
+{bold}{white-fg}Spread Range (BPS){/white-fg}{/bold}
+{cyan-fg}Min:{/cyan-fg} {yellow-fg}${
+      params.spreadRange.min
+    }{/yellow-fg} bps {gray-fg}(${(params.spreadRange.min / 100).toFixed(
       2
-    )}%)
-Max: ${params.spreadRange.max} bps (${(params.spreadRange.max / 100).toFixed(
+    )}%){/gray-fg}
+{cyan-fg}Max:{/cyan-fg} {yellow-fg}${
+      params.spreadRange.max
+    }{/yellow-fg} bps {gray-fg}(${(params.spreadRange.max / 100).toFixed(
       2
-    )}%)
+    )}%){/gray-fg}
 
-{bold}Correlation Factor{/bold}
-Factor: ${params.correlationFactor.toFixed(2)}
+{bold}{white-fg}Correlation Factor{/white-fg}{/bold}
+{cyan-fg}Factor:{/cyan-fg} {yellow-fg}${params.correlationFactor.toFixed(
+      2
+    )}{/yellow-fg}
 
-{gray}─────────────────────────{/gray}
+{gray-fg}━━━━━━━━━━━━━━━━━━━━━━━━━{/gray-fg}
 
-{cyan}Press 'a' to apply changes{/cyan}
-{cyan}Press 'r' to reset{/cyan}
-{cyan}Press 'p' to pause{/cyan}
-{cyan}Press 'q' to quit{/cyan}
+{green-fg}Press 'a' to apply changes{/green-fg}
+{green-fg}Press 'r' to reset{/green-fg}
+{green-fg}Press 'p' to pause{/green-fg}
+{red-fg}Press 'q' to quit{/red-fg}
     `.trim();
   }
 
@@ -237,16 +331,34 @@ Factor: ${params.correlationFactor.toFixed(2)}
       0
     );
 
+    const upperChange = (
+      ((dataPoint.upperBound - dataPoint.midPrice) / dataPoint.midPrice) *
+      100
+    ).toFixed(3);
+    const lowerChange = (
+      ((dataPoint.lowerBound - dataPoint.midPrice) / dataPoint.midPrice) *
+      100
+    ).toFixed(3);
+
     return `
-{bold}Current Price: {cyan}${dataPoint.midPrice.toFixed(2)}{/cyan}{/bold}
+{bold}{white-fg}Current Price:{/white-fg} {cyan-fg}${dataPoint.midPrice.toFixed(
+      2
+    )}{/cyan-fg}{/bold}
 
-Upper Bound: {magenta}${dataPoint.upperBound.toFixed(2)}{/magenta}
-Lower Bound: {magenta}${dataPoint.lowerBound.toFixed(2)}{/magenta}
+{magenta-fg}Upper Bound:{/magenta-fg} {yellow-fg}${dataPoint.upperBound.toFixed(
+      4
+    )}{/yellow-fg} {green-fg}(+${upperChange}%){/green-fg}
+{magenta-fg}Lower Bound:{/magenta-fg} {yellow-fg}${dataPoint.lowerBound.toFixed(
+      4
+    )}{/yellow-fg} {red-fg}(${lowerChange}%){/red-fg}
 
-Spread Width: ${(dataPoint.upperBound - dataPoint.lowerBound).toFixed(2)}
+{white-fg}Spread Width:{/white-fg} {cyan-fg}${(
+      dataPoint.upperBound - dataPoint.lowerBound
+    ).toFixed(4)}{/cyan-fg}
 
-{gray}Chart visualization will be implemented with blessed-contrib{/gray}
-{gray}This will show real-time price movement with spread bands{/gray}
+{gray-fg}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{/gray-fg}
+{gray-fg}Chart visualization will be implemented with blessed-contrib{/gray-fg}
+{gray-fg}This will show real-time price movement with spread bands{/gray-fg}
     `.trim();
   }
 
@@ -255,18 +367,18 @@ Spread Width: ${(dataPoint.upperBound - dataPoint.lowerBound).toFixed(2)}
    */
   private renderStatusBar(): string {
     const status = this.state.isPaused
-      ? "{yellow}PAUSED{/yellow}"
-      : "{green}RUNNING{/green}";
+      ? "{yellow-fg}PAUSED{/yellow-fg}"
+      : "{green-fg}RUNNING{/green-fg}";
     const connection =
       this.state.connectionStatus === "connected"
-        ? "{green}Connected{/green}"
-        : "{gray}Disconnected{/gray}";
+        ? "{green-fg}Connected{/green-fg}"
+        : "{gray-fg}Disconnected{/gray-fg}";
 
     const timeSinceUpdate = Math.floor(
       (Date.now() - this.state.lastUpdate.getTime()) / 1000
     );
 
-    return ` Status: ${status} | Connection: ${connection} | Last update: ${timeSinceUpdate}s ago | Press 'h' for help`;
+    return ` {white-fg}Status:{/white-fg} ${status} {gray-fg}|{/gray-fg} {white-fg}Connection:{/white-fg} ${connection} {gray-fg}|{/gray-fg} {white-fg}Last update:{/white-fg} {cyan-fg}${timeSinceUpdate}s{/cyan-fg} ago {gray-fg}|{/gray-fg} {magenta-fg}Press 'h' for help{/magenta-fg}`;
   }
 
   /**
@@ -344,6 +456,10 @@ Spread Width: ${(dataPoint.upperBound - dataPoint.lowerBound).toFixed(2)}
       data.statusBar.setContent(this.renderStatusBar());
     }
 
+    if (data.subtitle) {
+      data.subtitle.setContent(this.renderSubtitle());
+    }
+
     this.screen.render();
   }
 
@@ -356,32 +472,35 @@ Spread Width: ${(dataPoint.upperBound - dataPoint.lowerBound).toFixed(2)}
       left: "center",
       width: "60%",
       height: "60%",
-      label: " Help ",
+      label: " {bold}Help{/bold} ",
+      tags: true,
       border: {
         type: "line",
       },
       style: {
-        fg: BLESSED_COLORS.text,
+        fg: "white",
         border: {
-          fg: BLESSED_COLORS.accent,
+          fg: "cyan",
+        },
+        label: {
+          fg: "cyan",
         },
       },
       content: `
-{bold}Keyboard Shortcuts:{/bold}
+{bold}{white-fg}Keyboard Shortcuts:{/white-fg}{/bold}
 
-{cyan}Q / Ctrl+C{/cyan}  - Quit application
-{cyan}P{/cyan}          - Pause/resume updates
-{cyan}R{/cyan}          - Reset parameters to defaults
-{cyan}A{/cyan}          - Apply parameters (when sequencer connected)
-{cyan}H / ?{/cyan}      - Show this help
+{cyan-fg}Q / Ctrl+C{/cyan-fg}  - Quit application
+{cyan-fg}P{/cyan-fg}          - Pause/resume updates
+{cyan-fg}R{/cyan-fg}          - Reset parameters to defaults
+{cyan-fg}A{/cyan-fg}          - Apply parameters (when sequencer connected)
+{cyan-fg}H / ?{/cyan-fg}      - Show this help
 
-{bold}Navigation:{/bold}
-{cyan}Tab{/cyan}        - Navigate between controls
-{cyan}Arrows{/cyan}     - Adjust values
+{bold}{white-fg}Navigation:{/white-fg}{/bold}
+{cyan-fg}Tab{/cyan-fg}        - Navigate between controls
+{cyan-fg}Arrows{/cyan-fg}     - Adjust values
 
-{gray}Press any key to close this help{/gray}
+{gray-fg}Press any key to close this help{/gray-fg}
       `,
-      tags: true,
     });
 
     this.screen.append(helpBox);

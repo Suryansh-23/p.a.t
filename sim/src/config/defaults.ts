@@ -8,8 +8,8 @@ import type { UIConfig } from "../types/state.js";
 export const DEFAULT_PARAMETERS: SequencerParameters = {
   updateFrequency: 2000, // 2 seconds - typical L2 block time
   spreadRange: {
-    min: 50, // 0.5% minimum spread
-    max: 500, // 5% maximum spread
+    min: 1, // 0.01% minimum spread (1 bps)
+    max: 10, // 0.10% maximum spread (10 bps)
   },
   correlationFactor: 0.7, // moderate correlation
 };
