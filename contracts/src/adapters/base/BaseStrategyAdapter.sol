@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.30;
 
-abstract contract BaseStrategyAdapter {
+import {IStrategyAdapter} from "@interfaces/IStrategyAdapter.sol";
+
+abstract contract BaseStrategyAdapter is IStrategyAdapter {
     bytes public parameters;
 
     function update(bytes calldata _params) public virtual;
