@@ -5,7 +5,6 @@ import { config } from "./config/index.js";
 import { createChainWalletClient, customChain } from "./clients/viem.js";
 import { logger } from "./logger.js";
 import type { PoolId, SwapOrder } from "./types.js";
-import { getEvmSecretKey } from "./appd.js";
 
 export interface SubmitBatchResult {
   txHash: Hex;
@@ -24,7 +23,7 @@ let submitterFn: SubmitBatchFn | null = null;
 export async function initBatchSubmitter(): Promise<SubmitBatchFn> {
   if (submitterFn) return submitterFn;
 
-  const secretKey = (await getEvmSecretKey("batcher")) as Hex;
+  const secretKey = config.batcherPrivateKey as Hex;
   const account = privateKeyToAccount(secretKey);
   const walletClient = createChainWalletClient(account);
 

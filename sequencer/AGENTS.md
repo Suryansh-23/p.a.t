@@ -154,8 +154,8 @@ interface BatchRequest {
   - `POOL_LAUNCH_START_BLOCK`
 - Flow:
   1. Instantiate a viem public client with WebSocket transport (falls back to HTTP polling if WS unavailable).
-  2. On boot, call `getLogs` for `[POOL_LAUNCH_START_BLOCK, latest]` to catch pre-existing pools.
-  3. Start `watchContractEvent` for `PoolLaunched` with `onLogs` handler.
+  2. Use a dedicated HTTP client for backfills; call `getLogs` in <=10 block chunks (to comply with the Alchemy free-tier limit) for `[POOL_LAUNCH_START_BLOCK, latest]`. If `POOL_LAUNCH_START_BLOCK=-1`, skip backfill entirely.
+  3. Start `watchContractEvent` for `PoolLaunched` with `fromBlock = latest+1` when backfilling, or `fromBlock = latest` when skipping history.
   4. For every log, extract `poolId`, store in `poolIds`, and optionally keep `LaunchConfig` fields (tokens, fee) in `poolMetadata` for observability.
   5. Track latest block height processed for the `/` health response.
 
@@ -166,9 +166,9 @@ interface BatchRequest {
   - `POOL_MANAGER_ABI_PATH`
   - `POOL_MANAGER_START_BLOCK`
 - Flow:
-  1. Reuse the viem client (or instantiate another if different transport is needed).
-  2. Backfill `Swap` events from `POOL_MANAGER_START_BLOCK` with `getLogs` (bounded by `BATCH_SIZE * 10` or another heuristic so memory stays under control).
-  3. Start a live watcher via `watchContractEvent` for `Swap`.
+  1. Prefer the WebSocket client for streaming swaps while relying on HTTP for backfills.
+  2. Backfill `Swap` events from `POOL_MANAGER_START_BLOCK` via chunked `getLogs` requests that never exceed 10 blocks per call (skip when the start block is `-1`).
+  3. Start a live watcher via `watchContractEvent` for `Swap` using `fromBlock = latest+1` (or the latest block when skipping history).
   4. Each log ➜ decode ➜ determine `poolId` (`PoolId` == `bytes32 id` by default; adapt if mapping is required) ➜ only enqueue when `poolIds.has(poolId)`.
   5. Push to `swapQueue` along with metadata. If the queue is empty for long periods, we still keep watchers alive.
   6. Maintain counters (queue length, last block) for `GET /` output.
@@ -234,7 +234,7 @@ const UpdateSchema = z.object({
 ## Contract Submission
 
 - Configured via `BATCH_TARGET_ADDRESS` + ABI (or interface string) + method name (e.g., `submitBatch`).
-- Build a viem wallet client with `account: privateKeyToAccount(await getEvmSecretKey('batcher'))`.
+- Build a viem wallet client with `account: privateKeyToAccount(process.env.BATCHER_PRIVATE_KEY)`.
 - Use HTTP RPC transport for writes; keep WS for event streams.
 - Gas strategy: `walletClient.estimateGas` + `estimateFeesPerGas`, fallback to static `gasPrice` for testnets.
 - Emit structured logs: batch size, poolId, tx hash, latency.
@@ -249,15 +249,14 @@ const UpdateSchema = z.object({
 | `CHAIN_RPC_HTTP` | HTTP endpoint for backfills + tx submission. | `https://base-sepolia...` |
 | `CHAIN_RPC_WS` | WebSocket endpoint for live indexing (falls back to HTTP when absent). | `wss://base-sepolia...` |
 | `POOL_LAUNCH_ADDRESS` | Contract emitting `PoolLaunched`. | `0xabc...` |
-| `POOL_LAUNCH_START_BLOCK` | Backfill lower bound. | `1234567` |
+| `POOL_LAUNCH_START_BLOCK` | Backfill lower bound (`-1` = skip history, start watchers at latest). | `1234567` |
 | `POOL_MANAGER_ADDRESS` | Uniswap v4 PoolManager address. | `0xdef...` |
-| `POOL_MANAGER_START_BLOCK` | Swap backfill lower bound. | `1235000` |
+| `POOL_MANAGER_START_BLOCK` | Swap backfill lower bound (`-1` = skip history, start watchers at latest). | `1235000` |
 | `BATCH_TARGET_ADDRESS` | Contract to receive batches. | `0x123...` |
 | `BATCH_SIZE` | Max swaps to send per `/update`. | `10` |
+| `BATCHER_PRIVATE_KEY` | 32-byte hex key used by the submitter (set via Compose/env). | `0xabc...` |
 | `EXPRESS_PORT` | HTTP port. | `8080` |
 | `EXPRESS_HOST` | Bind host (`127.0.0.1` dev, `0.0.0.0` in ROFL). | `0.0.0.0` |
-| `ALLOW_LOCAL_DEV` | Toggle ROFL key fallback. | `true` |
-| `LOCAL_DEV_SK` | Hex private key for local runs (only when local mode enabled). | `0x...` |
 
 ## Operational Notes
 
@@ -313,13 +312,13 @@ const UpdateSchema = z.object({
 
 8. **Manual Verification Checklist**
    - Document basic manual tests (env sample, `pnpm dev`, hitting `/` and `/update` with mock data, verifying queue drain logs).
-   - Prepare instructions for running inside ROFL vs. local (env flags, how to supply LOCAL_DEV_SK).
+   - Prepare instructions for running inside ROFL vs. local (env flags, how to supply `BATCHER_PRIVATE_KEY` securely).
 
 This plan must be approved before implementation starts; once approved, we will follow the steps sequentially, validating after each major piece is wired together.
 
 ### Manual Verification Checklist
 
-- Copy `.env.example` (or create `.env`) with the required chain URLs, addresses, start blocks, batch size, HTTP host/port, and ROFL flags (`ALLOW_LOCAL_DEV=true`, `LOCAL_DEV_SK=0x...` for dev).
+- Copy `.env.example` (or create `.env`) with the required chain URLs, addresses, start blocks, batch size, HTTP host/port, and `BATCHER_PRIVATE_KEY` (use a dev key locally, inject via secrets in ROFL/prod).
 - Install deps once via `pnpm install` (workspace root).
 - Start the service locally: `pnpm dev` (inside `/sequencer`). Ensure logs show both indexers online before hitting the API.
 - Smoke-test HTTP endpoints:
@@ -327,7 +326,7 @@ This plan must be approved before implementation starts; once approved, we will 
   - `curl localhost:8080/api/pools` and `curl localhost:8080/api/pools/0x...` once launches are indexed.
   - `curl -X POST localhost:8080/update -H 'Content-Type: application/json' -d '{"poolId":"0x...","parameters":"{\"foo\":1}"}'`.
 - Watch logs for queue growth + batch submission events; confirm drained swaps are re-queued when submission fails (e.g., disconnect RPC).
-- For ROFL deployment, disable `ALLOW_LOCAL_DEV`, omit `LOCAL_DEV_SK`, and rely on the enclave key. Update `EXPRESS_HOST` to the appropriate interface.
+- For ROFL/prod deployments, provide `BATCHER_PRIVATE_KEY` via Compose/secret management (never bake into the image) and ensure `EXPRESS_HOST` is set to the intended interface.
 - Build the production image via `docker build -t sequencer:local .` and run `docker compose up` (Compose consumes `.env` and uses `ROFL_APP_IMAGE` when provided by Oasis).
 
 ## Future Enhancements

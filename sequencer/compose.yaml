@@ -6,5 +6,6 @@ services:
       - .env
     environment:
       NODE_ENV: production
+      BATCHER_PRIVATE_KEY: ${BATCHER_PRIVATE_KEY}
     volumes:
       - /run/rofl-appd.sock:/run/rofl-appd.sock

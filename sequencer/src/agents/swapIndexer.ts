@@ -1,13 +1,13 @@
 import type { Hex } from "viem";
 import { poolManagerAbi } from "../abi/index.js";
 import { config } from "../config/index.js";
-import { getPublicClient } from "../clients/viem.js";
+import { getHttpClient, getWebSocketClient } from "../clients/viem.js";
 import { logger } from "../logger.js";
 import { hasPool, setLastIndexedBlock } from "../state/pools.js";
-import { enqueueSwap, queueSize, isQueueEmpty } from "../state/queue.js";
+import { enqueueSwap, isQueueEmpty, queueSize } from "../state/queue.js";
 import type { SwapOrder } from "../types.js";
 
-const MAX_BACKFILL_MULTIPLIER = 10;
+const LOG_CHUNK_SIZE = 10n;
 
 type SwapLog = {
   args?: {
@@ -26,41 +26,69 @@ type SwapLog = {
 };
 
 export async function startSwapIndexer(): Promise<() => void> {
-  const client = getPublicClient();
-  await backfillSwaps(client);
+  const httpClient = getHttpClient();
+  const wsClient = getWebSocketClient();
+  const latestBlock = await httpClient.getBlockNumber();
 
-  const unwatch = client.watchContractEvent({
+  let watchFromBlock = latestBlock;
+  if (config.poolManagerStartBlock >= 0n) {
+    await backfillSwaps(
+      httpClient,
+      config.poolManagerStartBlock,
+      latestBlock
+    );
+    watchFromBlock = latestBlock + 1n;
+  }
+
+  const unwatch = wsClient.watchContractEvent({
     address: config.poolManagerAddress as Hex,
     abi: poolManagerAbi,
     eventName: "Swap",
-    onLogs: (logs) => logs.forEach((log) => handleSwap(log)),
-    onError: (err) => logger.error({ err }, "Swap watcher error"),
+    fromBlock: watchFromBlock,
+    onLogs: (logs: SwapLog[]) => logs.forEach((log) => handleSwap(log)),
+    onError: (err: unknown) => logger.error({ err }, "Swap watcher error"),
   });
 
-  logger.info("Swap indexer online");
+  logger.info(
+    { watchFromBlock: watchFromBlock.toString() },
+    "Swap indexer online"
+  );
   return () => {
     unwatch();
     logger.info("Swap indexer stopped");
   };
 }
 
-async function backfillSwaps(client: ReturnType<typeof getPublicClient>) {
+async function backfillSwaps(
+  client: ReturnType<typeof getHttpClient>,
+  startBlock: bigint,
+  endBlock: bigint
+) {
+  if (startBlock < 0n || startBlock > endBlock) {
+    return;
+  }
   try {
-    const latest = await client.getBlockNumber();
-    const logs = await client.getLogs({
-      address: config.poolManagerAddress as Hex,
-      event: poolManagerAbi[0],
-      fromBlock: config.poolManagerStartBlock,
-      toBlock: latest,
-    });
-    const limit = config.batchSize * MAX_BACKFILL_MULTIPLIER;
-    const sliced = logs.slice(-limit);
-    sliced.forEach((log) => handleSwap(log as SwapLog));
+    let cursor = startBlock;
+    let totalLogs = 0;
+    while (cursor <= endBlock) {
+      const toBlock = cursor + LOG_CHUNK_SIZE - 1n;
+      const cappedToBlock = toBlock > endBlock ? endBlock : toBlock;
+      const logs = await client.getLogs({
+        address: config.poolManagerAddress as Hex,
+        event: poolManagerAbi[0],
+        fromBlock: cursor,
+        toBlock: cappedToBlock,
+      });
+      logs.forEach((log) => handleSwap(log as SwapLog));
+      totalLogs += logs.length;
+      cursor = cappedToBlock + 1n;
+    }
     logger.info(
       {
-        fetched: logs.length,
-        processed: sliced.length,
-        latestBlock: latest.toString(),
+        total: totalLogs,
+        fromBlock: startBlock.toString(),
+        toBlock: endBlock.toString(),
+        chunkSize: LOG_CHUNK_SIZE.toString(),
       },
       "Swap backfill complete"
     );
