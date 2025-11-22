@@ -15,45 +15,15 @@ import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockC
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 
 import {IPropHook} from "@interfaces/IPropHook.sol";
+import {IPropLaunchpad} from "@interfaces/IPropLaunchpad.sol";
 
 /// @title PropLaunchpad
 /// @notice Factory and manager for proprietary AMM pools with custom pricing strategies
 /// @dev Enables market makers to launch and manage their own proprietary pools with PropHook
-contract PropLaunchpad is Ownable, IUnlockCallback {
+contract PropLaunchpad is Ownable, IUnlockCallback, IPropLaunchpad {
     using PoolIdLibrary for PoolKey;
     using SafeERC20 for IERC20;
     using CurrencyLibrary for Currency;
-
-    ////////////////////////////////////////////////////
-    ////////////////////// Structs /////////////////////
-    ////////////////////////////////////////////////////
-
-    /// @notice Configuration for launching a new pool
-    struct LaunchConfig {
-        address token0;
-        address token1;
-        uint256 token0SeedAmt;
-        uint256 token1SeedAmt;
-        address strategyAdapter;
-        address thresholdAdapter;
-        string poolName;
-        CuratorInfo curatorInfo;
-    }
-
-    struct CuratorInfo {
-        address curator;
-        string name;
-        string website;
-    }
-
-    /// @notice Callback data for liquidity operations
-    struct CallbackData {
-        address sender;
-        PoolKey key;
-        address asset;
-        uint256 amount;
-        bool isAdd;
-    }
 
     /// @notice PoolManager contract instance
     address public immutable POOL_MANAGER;
@@ -85,7 +55,6 @@ contract PropLaunchpad is Ownable, IUnlockCallback {
     error PropLaunchpad__InvalidTokens();
     error PropLaunchpad__InvalidStrategy();
     error PropLaunchpad__PoolAlreadyExists();
-    error PropLaunchpad__PoolNotFound();
     error PropLaunchpad__InvalidAsset();
     error PropLaunchpad__InsufficientAmount();
     error PropLaunchpad__Unauthorized();
@@ -226,10 +195,8 @@ contract PropLaunchpad is Ownable, IUnlockCallback {
         CallbackData memory data = abi.decode(rawData, (CallbackData));
 
         if (data.isAdd) {
-            // Add liquidity
             _addLiquidityCallback(data);
         } else {
-            // Remove liquidity
             _removeLiquidityCallback(data);
         }
 
@@ -261,7 +228,7 @@ contract PropLaunchpad is Ownable, IUnlockCallback {
             // Adding token0 only
             if (delta.amount0() < 0) {
                 uint256 amountOwed = uint256(int256(-delta.amount0()));
-                
+
                 // Handle native currency (address(0))
                 if (data.asset == address(0)) {
                     // Settle native currency
@@ -277,7 +244,7 @@ contract PropLaunchpad is Ownable, IUnlockCallback {
             // Adding token1 only
             if (delta.amount1() < 0) {
                 uint256 amountOwed = uint256(int256(-delta.amount1()));
-                
+
                 // Handle native currency (address(0))
                 if (data.asset == address(0)) {
                     // Settle native currency
