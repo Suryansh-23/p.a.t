@@ -1,0 +1,25 @@
+{
+  "name": "demo-rofl-keygen",
+  "version": "0.2.0",
+  "description": "Minimal ROFL example: generate secp256k1 key via appd REST, sign, deploy & send ETH on Base Sepolia.",
+  "type": "module",
+  "main": "dist/scripts/smoke-test.js",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "build:all": "npm run build && npm run compile:contracts"
+  },
+  "dependencies": {
+    "@oasisprotocol/rofl-client": "^0.1.1",
+    "dotenv": "^17.2.3",
+    "viem": "2.39.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.1",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}

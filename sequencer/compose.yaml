@@ -1,0 +1,10 @@
+services:
+  demo:
+    image: ghcr.io/uniyalabhishek/demo-rofl-keygen:0.2.1
+    platform: linux/amd64
+    environment:
+      - KEY_ID=${KEY_ID:-evm:base:sepolia}
+      - BASE_RPC_URL=${BASE_RPC_URL:-https://sepolia.base.org}
+      - BASE_CHAIN_ID=${BASE_CHAIN_ID:-84532}
+    volumes:
+      - /run/rofl-appd.sock:/run/rofl-appd.sock
