@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.30;
 
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+
 import {BaseHook} from "@uniswap/v4-periphery/src/utils/BaseHook.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
@@ -24,7 +26,7 @@ import {ISwapHandler} from "@interfaces/ISwapHandler.sol";
 /// @title PropHook - Proprietary AMM with Strategy-Based Pricing
 /// @notice Hook enabling market makers to launch proprietary pools with custom pricing strategies
 /// @dev Each pool has its own strategy adapter defining proprietary pricing logic
-contract PropHook is BaseHook {
+contract PropHook is BaseHook, Ownable {
     using BalanceDeltaLibrary for BalanceDelta;
     using SafeCast for uint256;
     using PoolIdLibrary for PoolKey;
@@ -94,7 +96,7 @@ contract PropHook is BaseHook {
     /////////////////// Constructor ////////////////////
     ////////////////////////////////////////////////////
 
-    constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
+    constructor(IPoolManager _poolManager, address _owner) BaseHook(_poolManager) Ownable(_owner) {}
 
     ////////////////////////////////////////////////////
     /////////////// Configuration Functions ////////////
@@ -102,7 +104,7 @@ contract PropHook is BaseHook {
 
     /// @notice Set the launchpad address (can only be set once)
     /// @param _launchpad Address of the PropLaunchpad contract
-    function setLaunchpad(address _launchpad) external {
+    function setLaunchpad(address _launchpad) external onlyOwner {
         if (launchpad != address(0)) revert PropHook__Unauthorized();
         launchpad = _launchpad;
         emit LaunchpadSet(_launchpad);
@@ -110,7 +112,7 @@ contract PropHook is BaseHook {
 
     /// @notice Set the swap handler address (can only be set once)
     /// @param _swapHandler Address of the SwapHandler contract (TEE)
-    function setSwapHandler(address _swapHandler) external {
+    function setSwapHandler(address _swapHandler) external onlyOwner {
         if (swapHandler != address(0)) revert PropHook__Unauthorized();
         swapHandler = _swapHandler;
         emit SwapHandlerSet(_swapHandler);
