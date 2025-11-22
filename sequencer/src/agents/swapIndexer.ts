@@ -11,14 +11,10 @@ const LOG_CHUNK_SIZE = 10n;
 
 type SwapLog = {
   args?: {
-    id?: Hex | undefined;
+    poolId?: Hex | undefined;
     sender?: Hex | undefined;
-    amount0?: bigint | undefined;
-    amount1?: bigint | undefined;
-    sqrtPriceX96?: bigint | undefined;
-    liquidity?: bigint | undefined;
-    tick?: number | undefined;
-    fee?: number | undefined;
+    zeroForOne?: boolean | undefined;
+    amountSpecified?: bigint | undefined;
   };
   blockNumber?: bigint;
   logIndex?: number;
@@ -39,11 +35,7 @@ export async function startSwapIndexer(): Promise<() => void> {
       },
       "Starting swap backfill"
     );
-    await backfillSwaps(
-      httpClient,
-      config.poolManagerStartBlock,
-      latestBlock
-    );
+    await backfillSwaps(httpClient, config.poolManagerStartBlock, latestBlock);
     watchFromBlock = latestBlock + 1n;
   } else {
     logger.info(
@@ -55,7 +47,7 @@ export async function startSwapIndexer(): Promise<() => void> {
   const unwatch = wsClient.watchContractEvent({
     address: config.poolManagerAddress as Hex,
     abi: poolManagerAbi,
-    eventName: "Swap",
+    eventName: "SwapRequested",
     fromBlock: watchFromBlock,
     onLogs: (logs: SwapLog[]) => logs.forEach((log) => handleSwap(log)),
     onError: (err: unknown) => logger.error({ err }, "Swap watcher error"),
@@ -119,7 +111,7 @@ async function backfillSwaps(
 }
 
 function handleSwap(log: SwapLog) {
-  const poolId = log.args?.id as Hex | undefined;
+  const poolId = log.args?.poolId as Hex | undefined;
   if (!poolId) return;
   if (!hasPool(poolId)) {
     logger.debug(
@@ -129,19 +121,14 @@ function handleSwap(log: SwapLog) {
     return;
   }
 
-  const sender =
-    (log.args?.sender ??
-      "0x0000000000000000000000000000000000000000") as Hex;
+  const sender = (log.args?.sender ??
+    "0x0000000000000000000000000000000000000000") as Hex;
   const order: SwapOrder = {
     poolId,
     swapId: (log.transactionHash ?? poolId) as Hex,
     sender,
-    amount0: log.args?.amount0 ?? 0n,
-    amount1: log.args?.amount1 ?? 0n,
-    sqrtPriceX96: log.args?.sqrtPriceX96 ?? 0n,
-    liquidity: log.args?.liquidity ?? 0n,
-    tick: Number(log.args?.tick ?? 0),
-    fee: Number(log.args?.fee ?? 0),
+    zeroForOne: log.args?.zeroForOne ?? false,
+    amountSpecified: log.args?.amountSpecified ?? 0n,
     metadata: {
       blockNumber: log.blockNumber ?? 0n,
       logIndex: log.logIndex ?? 0,
@@ -154,10 +141,7 @@ function handleSwap(log: SwapLog) {
   if (log.blockNumber) setLastIndexedBlock("swaps", log.blockNumber);
 
   if (queueSize() % config.batchSize === 0 || queueSize() === 1) {
-    logger.info(
-      { queueSize: queueSize(), latestPool: poolId },
-      "Swap queued"
-    );
+    logger.info({ queueSize: queueSize(), latestPool: poolId }, "Swap queued");
   } else if (isQueueEmpty()) {
     logger.debug("Swap queue empty");
   }

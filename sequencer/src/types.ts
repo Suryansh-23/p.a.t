@@ -30,12 +30,8 @@ export interface SwapOrder {
   poolId: PoolId;
   swapId: HexString;
   sender: HexString;
-  amount0: bigint;
-  amount1: bigint;
-  sqrtPriceX96: bigint;
-  liquidity: bigint;
-  tick: number;
-  fee: number;
+  zeroForOne: boolean;
+  amountSpecified: bigint;
   metadata: {
     blockNumber: bigint;
     logIndex: number;
