@@ -32,12 +32,24 @@ export async function startSwapIndexer(): Promise<() => void> {
 
   let watchFromBlock = latestBlock;
   if (config.poolManagerStartBlock >= 0n) {
+    logger.info(
+      {
+        fromBlock: config.poolManagerStartBlock.toString(),
+        toBlock: latestBlock.toString(),
+      },
+      "Starting swap backfill"
+    );
     await backfillSwaps(
       httpClient,
       config.poolManagerStartBlock,
       latestBlock
     );
     watchFromBlock = latestBlock + 1n;
+  } else {
+    logger.info(
+      { latestBlock: latestBlock.toString() },
+      "Skipping swap backfill (start block = -1)"
+    );
   }
 
   const unwatch = wsClient.watchContractEvent({
@@ -81,6 +93,14 @@ async function backfillSwaps(
       });
       logs.forEach((log) => handleSwap(log as SwapLog));
       totalLogs += logs.length;
+      logger.debug(
+        {
+          chunkStart: cursor.toString(),
+          chunkEnd: cappedToBlock.toString(),
+          logs: logs.length,
+        },
+        "Processed swap log chunk"
+      );
       cursor = cappedToBlock + 1n;
     }
     logger.info(
@@ -102,6 +122,10 @@ function handleSwap(log: SwapLog) {
   const poolId = log.args?.id as Hex | undefined;
   if (!poolId) return;
   if (!hasPool(poolId)) {
+    logger.debug(
+      { poolId, txHash: log.transactionHash },
+      "Ignoring swap for unknown poolId"
+    );
     return;
   }
 
