@@ -68,8 +68,8 @@ const configSchema = z.object({
       .default("false"),
     minAmount: z.coerce.number().positive().default(0.01),
     maxAmount: z.coerce.number().positive().default(0.1),
-    minInterval: z.coerce.number().positive().default(5000),
-    maxInterval: z.coerce.number().positive().default(30000),
+    minInterval: z.coerce.number().positive().default(1000),
+    maxInterval: z.coerce.number().positive().default(80000),
     routerAddress: z
       .string()
       .regex(/^0x[a-fA-F0-9]{40}$/, "Router address must be a valid address")

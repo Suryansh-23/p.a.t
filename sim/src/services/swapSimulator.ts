@@ -164,7 +164,7 @@ export class SwapSimulator {
         hooks: this.config.hookAddress as `0x${string}`,
       };
 
-      // Execute the swap
+      // Execute the swap (no native ETH needed - WETH allowance already granted)
       const hash: Hash = await walletClient.writeContract({
         address: this.config.routerAddress as `0x${string}`,
         abi: swapRouterAbi,
@@ -175,7 +175,6 @@ export class SwapSimulator {
           this.config.usdcAddress as `0x${string}`,
           amountWei,
         ],
-        value: amountWei, // Send ETH with the transaction
         chain: null, // Use wallet client's configured chain
         account: account, // Explicitly pass account
       });
