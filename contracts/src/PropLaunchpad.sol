@@ -211,14 +211,14 @@ contract PropLaunchpad is Ownable, IUnlockCallback, IPropLaunchpad {
     /// @notice Internal callback for adding liquidity
     /// @dev Supports SINGLE-SIDED liquidity: curator provides only ONE asset at a time
     function _addLiquidityCallback(CallbackData memory data) internal {
-        Currency.wrap(data.asset).settle(IPoolManager(POOL_MANAGER), data.sender, data.amount, false);
+        Currency.wrap(data.asset).settle(IPoolManager(POOL_MANAGER), address(this), data.amount, false);
         Currency.wrap(data.asset).take(IPoolManager(POOL_MANAGER), address(this), data.amount, true);
     }
 
     /// @notice Internal callback for removing liquidity
     /// @dev Supports SINGLE-SIDED withdrawal: curator withdraws only ONE asset at a time
     function _removeLiquidityCallback(CallbackData memory data) internal {
-        Currency.wrap(data.asset).settle(IPoolManager(POOL_MANAGER), data.sender, data.amount, true);
+        Currency.wrap(data.asset).settle(IPoolManager(POOL_MANAGER), address(this), data.amount, true);
         Currency.wrap(data.asset).take(IPoolManager(POOL_MANAGER), address(this), data.amount, false);
     }
 
