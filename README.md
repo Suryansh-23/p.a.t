@@ -1,5 +1,7 @@
 # P.A.T - Proprietary AMM Launchpad
 
+![P.A.T Main Banner](docs/images/1.png)
+
 Proprietary Automated Market Maker launchpad built on top of Uniswap V4 using Trusted Execution Environments.
 
 ## Overview
@@ -7,6 +9,8 @@ Proprietary Automated Market Maker launchpad built on top of Uniswap V4 using Tr
 This project builds on Uniswap v4 hooks to create a proprietary (prop) AMM launchpad on Ethereum. On Solana, prop AMMs are a major venue for swaps and are especially popular with market makers, but they haven't really existed on Ethereum because of EVM limitations around gas pricing mechanisms. We address this by combining Trusted Execution Environments (TEEs) with an oracle-driven pricing mechanism, enabling complex, off-chain price computation with on-chain settlement guarantees. The result is a launchpad that lets teams deploy prop AMMs on Ethereum with market-maker-friendly features, while preserving transparency, security, and composability with the broader DeFi ecosystem.
 
 ## Architecture
+
+![Architecture Diagram](docs/images/pat.jpg)
 
 Built on top of Uniswap v4 and its hook system, which serves as the execution layer for swaps. The system overrides Uniswap's default curve-based pricing with custom curve logic and introduces an asynchronous, batch-based swap model implemented via hooks. Orders are grouped into batches inside a Trusted Execution Environment (TEE) using Oasis Runtime's offchain logic, where proprietary strategies are safely executed.
 
@@ -95,10 +99,17 @@ ui/                 - Next.js frontend application
 
 ## Contract Addresses
 
-**UniChain Sepolia Testnet**
+**Unichain Sepolia Testnet**
 - PropHook: `0x6a97647586C26013C048b7EE63c47D96Fd47Ca88`
 - Strategy Adapter: `0x62b12474183F9a68EDd638Cbc46f4CA6Da7ee6e6`
 - PropLaunchpad: `0x2C9Be74729176439D8Bf99EFaE048ccB62a9FDEd`
+
+## Onchain transactions
+
+**Unichain Sepolia Testnet**
+- Pool Launch: https://sepolia.uniscan.xyz/tx/0x7e71f8da6e1e0fa30b161d0d79b0650ba360c2be1fd585018743ef0127c8bb38
+- Swap Request: https://sepolia.uniscan.xyz/tx/0xdfe095d6c22496b0f4a0e031c967f55452e343fd9b32d1f17202fc8028fcd1ec
+- Posting Batch Orders & updating strategy parameters (TEE): https://sepolia.uniscan.xyz/tx/0xe349b5481ec840810ae58ae6b02da35bf389a6af525ac72dec886de8e55f975e 
 
 ## Development
 
