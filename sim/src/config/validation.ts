@@ -7,7 +7,7 @@ import { z } from "zod";
 export const SequencerParametersSchema = z.object({
   updateFrequency: z
     .number()
-    .min(1000, "Update frequency must be at least 1000ms")
+    .min(150, "Update frequency must be at least 1000ms")
     .max(60000, "Update frequency must not exceed 60000ms")
     .int("Update frequency must be an integer"),
 

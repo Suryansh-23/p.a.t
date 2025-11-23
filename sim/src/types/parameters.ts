@@ -31,6 +31,9 @@ export interface PriceDataPoint {
 
   /** Optional confidence interval (standard deviation) from Pyth */
   confidence?: number;
+
+  /** Marker indicating a sequencer update was posted at this point */
+  isUpdateMarker?: boolean;
 }
 
 export interface SpreadDataPoint {

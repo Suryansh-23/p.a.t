@@ -7,10 +7,13 @@ import type { Widgets } from "blessed";
 import { ParameterManager } from "./services/parameterManager.js";
 import { PriceSimulator } from "./services/priceSimulator.js";
 import { PriceChart } from "./components/priceChart.js";
+import { UpdateTimeline } from "./components/updateTimeline.js";
 import { ParameterPanel } from "./components/parameterPanel.js";
+import { SequencerClient } from "./services/sequencerClient.js";
 import { APP_NAME, KEY_BINDINGS } from "./constants.js";
 import type { AppState } from "./types/state.js";
 import { DEFAULT_PARAMETERS, UI_CONFIG } from "./config/defaults.js";
+import { config } from "./config/index.js";
 import { generatePriceDataPoint } from "./utils/calculations.js";
 
 export class App {
@@ -18,14 +21,23 @@ export class App {
   private parameterManager: ParameterManager;
   private priceSimulator: PriceSimulator;
   private priceChart?: PriceChart;
+  private updateTimeline?: UpdateTimeline;
   private parameterPanelComponent?: ParameterPanel;
+  private sequencerClient: SequencerClient;
   private state: AppState;
-  private updateTimer?: NodeJS.Timeout;
+  private postTimer?: NodeJS.Timeout;
   private priceSubscription?: () => void;
+  private updateCount: number = 0;
+  private lastUpdateTime?: Date;
 
   constructor() {
     this.parameterManager = new ParameterManager();
     this.priceSimulator = new PriceSimulator();
+    this.sequencerClient = new SequencerClient({
+      host: config.sequencer.host,
+      port: config.sequencer.port,
+      apiKey: config.sequencer.apiKey,
+    });
 
     // Initialize state
     this.state = {
@@ -210,17 +222,26 @@ export class App {
       top: 1,
       left: 1,
       width: "100%-2",
-      height: "50%-1",
+      height: "40%-1",
       showSpreadBands: true,
+      maxDataPoints: 100,
+    });
+
+    // Update timeline below price chart
+    this.updateTimeline = new UpdateTimeline(vizPanel, {
+      top: "40%",
+      left: 1,
+      width: "100%-2",
+      height: 4,
       maxDataPoints: 100,
     });
 
     // Current spread info box
     const spreadInfo = blessed.box({
-      top: "50%",
+      top: "40%+4",
       left: 1,
       width: "100%-2",
-      height: "50%-1",
+      height: "60%-5",
       label: " {bold}Current Spread Info{/bold} ",
       tags: true,
       border: {
@@ -330,54 +351,101 @@ export class App {
     const mode = this.priceSimulator.getMode();
     const connected = this.priceSimulator.isConnected();
 
-    return `
-{bold}{white-fg}Data Source:{/white-fg}{/bold} ${
-      mode === "live"
-        ? "{green-fg}Pyth Network (Live){/green-fg}"
-        : "{yellow-fg}Mock Data{/yellow-fg}"
-    }
-{white-fg}Connection:{/white-fg} ${
-      connected
-        ? "{green-fg}●{/green-fg} Connected"
-        : "{red-fg}●{/red-fg} Disconnected"
-    }
+    const lines = [];
 
-{gray-fg}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{/gray-fg}
+    // Data source line
+    lines.push(
+      `{bold}{white-fg}Data Source:{/white-fg}{/bold} ${
+        mode === "live"
+          ? "{green-fg}Pyth Network (Live){/green-fg}"
+          : "{yellow-fg}Mock Data{/yellow-fg}"
+      }`
+    );
 
-{bold}{white-fg}Current Price:{/white-fg} {cyan-fg}${dataPoint.midPrice.toFixed(
-      2
-    )}{/cyan-fg}{/bold}
-${
-  currentConfidence !== undefined
-    ? `{white-fg}Conf. Interval:{/white-fg} {yellow-fg}±${currentConfidence.toFixed(
-        4
-      )}{/yellow-fg}`
-    : ""
-}
+    // Connection status
+    lines.push(
+      `{white-fg}Connection:{/white-fg} ${
+        connected
+          ? "{green-fg}●{/green-fg} Connected"
+          : "{red-fg}●{/red-fg} Disconnected"
+      }`
+    );
 
-{magenta-fg}Upper Spread:{/magenta-fg} {yellow-fg}${dataPoint.upperBound.toFixed(
-      4
-    )}{/yellow-fg} {green-fg}(+${upperChange}%){/green-fg}
-{blue-fg}Lower Spread:{/blue-fg} {yellow-fg}${dataPoint.lowerBound.toFixed(
-      4
-    )}{/yellow-fg} {red-fg}(${lowerChange}%){/red-fg}
+    // Updates posted
+    lines.push("");
+    lines.push(
+      `{bold}{yellow-fg}Updates Posted:{/yellow-fg}{/bold} {green-fg}${
+        this.updateCount
+      }{/green-fg}${
+        this.lastUpdateTime
+          ? ` {gray-fg}(last: ${this.lastUpdateTime.toLocaleTimeString()}){/gray-fg}`
+          : ""
+      }`
+    );
 
-{white-fg}Spread Width:{/white-fg} {cyan-fg}${(
-      dataPoint.upperBound - dataPoint.lowerBound
-    ).toFixed(4)}{/cyan-fg}
-${
-  stats
-    ? `
-{gray-fg}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{/gray-fg}
+    // Separator
+    lines.push("");
+    lines.push(
+      "{gray-fg}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{/gray-fg}"
+    );
+    lines.push("");
 
-{white-fg}Statistics (${this.state.priceHistory.length} pts):{/white-fg}
-{gray-fg}Min:{/gray-fg} ${stats.min.toFixed(
+    // Current price
+    lines.push(
+      `{bold}{white-fg}Current Price:{/white-fg} {cyan-fg}${dataPoint.midPrice.toFixed(
         2
-      )}  {gray-fg}Max:{/gray-fg} ${stats.max.toFixed(2)}
-{gray-fg}Avg:{/gray-fg} ${stats.avg.toFixed(2)}`
-    : ""
-}
-    `.trim();
+      )}{/cyan-fg}{/bold}`
+    );
+
+    // Confidence interval
+    if (currentConfidence !== undefined) {
+      lines.push(
+        `{white-fg}Conf. Interval:{/white-fg} {yellow-fg}±${currentConfidence.toFixed(
+          4
+        )}{/yellow-fg}`
+      );
+    }
+
+    lines.push("");
+
+    // Spread bounds
+    lines.push(
+      `{magenta-fg}Upper Spread:{/magenta-fg} {yellow-fg}${dataPoint.upperBound.toFixed(
+        4
+      )}{/yellow-fg} {green-fg}(+${upperChange}%){/green-fg}`
+    );
+    lines.push(
+      `{blue-fg}Lower Spread:{/blue-fg} {yellow-fg}${dataPoint.lowerBound.toFixed(
+        4
+      )}{/yellow-fg} {red-fg}(${lowerChange}%){/red-fg}`
+    );
+
+    lines.push("");
+    lines.push(
+      `{white-fg}Spread Width:{/white-fg} {cyan-fg}${(
+        dataPoint.upperBound - dataPoint.lowerBound
+      ).toFixed(4)}{/cyan-fg}`
+    );
+
+    // Statistics
+    if (stats) {
+      lines.push("");
+      lines.push(
+        "{gray-fg}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{/gray-fg}"
+      );
+      lines.push("");
+      lines.push(
+        `{white-fg}Statistics (${this.state.priceHistory.length} pts):{/white-fg}`
+      );
+      lines.push(
+        `{gray-fg}Min:{/gray-fg} ${stats.min.toFixed(
+          2
+        )}  {gray-fg}Max:{/gray-fg} ${stats.max.toFixed(2)}`
+      );
+      lines.push(`{gray-fg}Avg:{/gray-fg} ${stats.avg.toFixed(2)}`);
+    }
+
+    return lines.join("\n");
   }
 
   /**
@@ -390,13 +458,25 @@ ${
     const connection =
       this.state.connectionStatus === "connected"
         ? "{green-fg}Connected{/green-fg}"
+        : this.state.connectionStatus === "error"
+        ? "{red-fg}Error{/red-fg}"
         : "{gray-fg}Disconnected{/gray-fg}";
 
     const timeSinceUpdate = Math.floor(
       (Date.now() - this.state.lastUpdate.getTime()) / 1000
     );
 
-    return ` {white-fg}Status:{/white-fg} ${status} {gray-fg}|{/gray-fg} {white-fg}Connection:{/white-fg} ${connection} {gray-fg}|{/gray-fg} {white-fg}Last update:{/white-fg} {cyan-fg}${timeSinceUpdate}s{/cyan-fg} ago {gray-fg}|{/gray-fg} {magenta-fg}Press 'h' for help{/magenta-fg}`;
+    return [
+      "{white-fg}Status:{/white-fg}",
+      status,
+      "{gray-fg}|{/gray-fg}",
+      "{white-fg}Connection:{/white-fg}",
+      connection,
+      "{gray-fg}|{/gray-fg}",
+      `{white-fg}Last update:{/white-fg} {cyan-fg}${timeSinceUpdate}s{/cyan-fg} ago`,
+      "{gray-fg}|{/gray-fg}",
+      "{dim}Press 'h' for help{/dim}",
+    ].join(" ");
   }
 
   /**
@@ -431,13 +511,13 @@ ${
     });
   }
   /**
-   * Start price update loop
+   * Start price update loop (real-time from Pyth or mock)
    */
   private async startPriceUpdates(): Promise<void> {
     const mode = this.priceSimulator.getMode();
 
     if (mode === "live") {
-      // Subscribe to Pyth price updates (real-time SSE)
+      // Subscribe to Pyth price updates (real-time SSE stream)
       this.priceSubscription = this.priceSimulator.subscribe(
         (price: number, timestamp: number, confidence?: number) => {
           if (!this.state.isPaused) {
@@ -453,21 +533,76 @@ ${
         this.state.connectionStatus = "connected";
       }
     } else {
-      // Mock data mode - use timer-based updates
-      const update = () => {
+      // Mock data mode - generate prices periodically for visualization
+      const generateMockPrice = () => {
         if (!this.state.isPaused) {
           const newPrice = this.priceSimulator.generateNextPrice();
           this.handlePriceUpdate(newPrice, Date.now());
         }
-
-        this.updateTimer = setTimeout(
-          update,
-          this.state.parameters.updateFrequency
-        );
+        // Mock mode updates every 500ms for smooth visualization
+        setTimeout(generateMockPrice, 500);
       };
-
-      update();
+      generateMockPrice();
     }
+
+    // Start sequencer posting loop (controlled by updateFrequency)
+    this.startSequencerPostingLoop();
+  }
+
+  /**
+   * Post spread updates to sequencer at configured frequency
+   */
+  private startSequencerPostingLoop(): void {
+    const postUpdate = async () => {
+      if (!this.state.isPaused && this.state.priceHistory.length > 0) {
+        const latestPoint =
+          this.state.priceHistory[this.state.priceHistory.length - 1];
+        const spreadBps = Math.round(
+          ((latestPoint.upperBound - latestPoint.midPrice) /
+            latestPoint.midPrice) *
+            10000
+        );
+
+        // Post to sequencer (errors are suppressed internally)
+        const result = await this.sequencerClient.postSpreadUpdate(
+          config.sequencer.poolId,
+          spreadBps
+        );
+
+        // Update connection status based on result
+        if (result.ok) {
+          this.state.connectionStatus = "connected";
+        } else {
+          this.state.connectionStatus = "error";
+        }
+
+        // Track update count and time
+        this.updateCount++;
+        this.lastUpdateTime = new Date();
+
+        // Mark the data point regardless of server response
+        // This shows when we attempted to post updates
+        if (this.state.priceHistory.length > 0) {
+          this.state.priceHistory[
+            this.state.priceHistory.length - 1
+          ].isUpdateMarker = true;
+
+          // Re-render the chart and timeline to show the marker
+          this.priceChart?.setData(this.state.priceHistory);
+          this.updateTimeline?.setData(this.state.priceHistory);
+        }
+
+        // Update UI to show new update count
+        this.updateUI();
+      }
+
+      this.postTimer = setTimeout(
+        postUpdate,
+        this.state.parameters.updateFrequency
+      );
+    };
+
+    postUpdate();
   }
 
   /**
@@ -493,8 +628,9 @@ ${
       this.state.priceHistory.shift();
     }
 
-    // Update chart
+    // Update chart and timeline
     this.priceChart?.addDataPoint(dataPoint);
+    this.updateTimeline?.setData(this.state.priceHistory);
 
     this.state.lastUpdate = new Date();
     this.updateUI();
@@ -581,8 +717,8 @@ ${
    * Cleanup resources before exit
    */
   private cleanup(): void {
-    if (this.updateTimer) {
-      clearTimeout(this.updateTimer);
+    if (this.postTimer) {
+      clearTimeout(this.postTimer);
     }
 
     // Unsubscribe from Pyth price updates

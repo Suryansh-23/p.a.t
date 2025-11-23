@@ -1,5 +1,5 @@
 /**
- * Future: HTTP client for communicating with sequencer service
+ * HTTP client for communicating with sequencer service
  */
 
 import type { SequencerParameters } from "../types/parameters.js";
@@ -35,23 +35,49 @@ export class SequencerClient {
   }
 
   /**
-   * Push parameter updates to sequencer
+   * Push spread update to sequencer
+   * @param poolId The pool ID (hex string with 0x prefix)
+   * @param spreadBps The spread in basis points
    */
-  async updateParameters(params: SequencerParameters): Promise<void> {
-    if (!this.connected) {
-      throw new Error("Not connected to sequencer");
-    }
+  async postSpreadUpdate(
+    poolId: string,
+    spreadBps: number
+  ): Promise<{ ok: boolean; error?: string }> {
+    try {
+      // Convert spread (bps) to Solidity uint256 bytes representation
+      // Spread in bps as uint256, then encode as bytes
+      const spreadUint256 = BigInt(Math.round(spreadBps));
+      const spreadHex = spreadUint256.toString(16).padStart(64, "0");
+      const parametersBytes = "0x" + spreadHex;
 
-    // TODO: Implement API call
-    // POST /api/v1/parameters
-    // Placeholder - would send params to this.config.host:this.config.port
-    void params;
+      const url = `http://${this.config.host}:${this.config.port}/update`;
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          poolId,
+          parameters: parametersBytes,
+        }),
+      });
+
+      if (!response.ok) {
+        // Suppress errors - just return failure status
+        return { ok: false, error: `HTTP ${response.status}` };
+      }
+
+      return { ok: true };
+    } catch (error) {
+      // Suppress all errors from sequencer
+      return { ok: false, error: String(error) };
+    }
   }
 
   /**
    * Get current parameters from sequencer
    */
-  async getParameters(): Promise<SequencerParameters> {
+  async getParameters(): Promise<SequencerParameters | null> {
     if (!this.connected) {
       throw new Error("Not connected to sequencer");
     }

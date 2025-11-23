@@ -17,6 +17,11 @@ const configSchema = z.object({
   sequencer: z.object({
     host: z.string().default("localhost"),
     port: z.coerce.number().default(3000),
+    poolId: z
+      .string()
+      .default(
+        "0x0000000000000000000000000000000000000000000000000000000000000000"
+      ),
     apiKey: z.string().optional(),
   }),
 
@@ -57,6 +62,7 @@ function loadConfig() {
     sequencer: {
       host: process.env.SEQUENCER_HOST,
       port: process.env.SEQUENCER_PORT,
+      poolId: process.env.POOL_ID,
       apiKey: process.env.SEQUENCER_API_KEY,
     },
     pyth: {
