@@ -70,20 +70,11 @@ contract VolumeWeightedAdapter {
         // Example: rebalance liquidity proportional to pool volume
     }
 }`,
-  presetB: `// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
-
-contract MarketNeutralAdapter {
-    function execute(bytes memory data) external {
-        // Example: hedge inventory and keep delta neutral
-    }
-}`,
 }
 
 const STRATEGIES = [
-  { id: "presetA", title: "Volume Weighted Adapter", description: "Reference strategy optimized for TVL growth." },
-  { id: "presetB", title: "Market Neutral Adapter", description: "Dampens volatility with hedged curves." },
-  { id: "custom", title: "Bring your own adapter", description: "Paste your adapter contract to deploy with the pool." },
+  { id: "presetA", title: "Volume Weighted Adapter" },
+  { id: "custom", title: "Bring your own adapter" },
 ]
 
 const THRESHOLD_SNIPPETS: Record<string, string> = {
@@ -95,20 +86,11 @@ contract VolatilityThreshold {
         return volatility < 80;
     }
 }`,
-  thresholdB: `// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
-
-contract LiquidityGuard {
-    function check(uint256 depth) external pure returns (bool) {
-        return depth > 1_000 ether;
-    }
-}`,
 }
 
 const THRESHOLD_STRATEGIES = [
-  { id: "thresholdA", title: "Volatility Threshold", description: "Throttle swaps when volatility spikes." },
-  { id: "thresholdB", title: "Liquidity Guard", description: "Require minimum depth before routing trades." },
-  { id: "thresholdCustom", title: "Custom Threshold Module", description: "Paste your own enforcement logic." },
+  { id: "thresholdA", title: "Volatility Threshold" },
+  { id: "thresholdCustom", title: "Custom Threshold Module" },
 ]
 
 export default function DeployPage() {
@@ -135,8 +117,8 @@ export default function DeployPage() {
   const publicClient = usePublicClient({ chainId: uniChainSepolia.id })
   const { data: walletClient } = useWalletClient({ chainId: uniChainSepolia.id })
   const { writeContractAsync, isPending: isLaunchPending } = useWriteContract()
-  const [fundingStatus, setFundingStatus] = useState({ token0: false, token1: false })
-  const [pendingTokenIndex, setPendingTokenIndex] = useState<0 | 1 | null>(null)
+  const [approvalsComplete, setApprovalsComplete] = useState(false)
+  const [isApprovingTokens, setIsApprovingTokens] = useState(false)
   const [isDeployingStrategy, setIsDeployingStrategy] = useState(false)
   const [isDeployingThreshold, setIsDeployingThreshold] = useState(false)
 
@@ -312,10 +294,6 @@ export default function DeployPage() {
   }
 
   const handleNext = () => {
-    if (currentStep === 2 && (!fundingStatus.token0 || !fundingStatus.token1)) {
-      alert("Please fund both tokens before continuing.")
-      return
-    }
     if (currentStep < STEPS.length) {
       setCurrentStep(currentStep + 1)
     }
@@ -338,11 +316,8 @@ export default function DeployPage() {
   const handleInputChange = (field: string, value: string) => {
     const nextValue = ADDRESS_FIELDS.has(field) ? value.toLowerCase() : value
     setFormData((prev) => ({ ...prev, [field]: nextValue }))
-    if (field === "token0" || field === "token0Amount") {
-      setFundingStatus((prev) => ({ ...prev, token0: false }))
-    }
-    if (field === "token1" || field === "token1Amount") {
-      setFundingStatus((prev) => ({ ...prev, token1: false }))
+    if (field === "token0" || field === "token0Amount" || field === "token1" || field === "token1Amount") {
+      setApprovalsComplete(false)
     }
   }
 
@@ -370,17 +345,14 @@ export default function DeployPage() {
     return parseAmount(value, decimals)
   }
 
-  const fundToken = async (tokenIndex: 0 | 1) => {
-    const tokenAddress = tokenIndex === 0 ? formData.token0 : formData.token1
-    const tokenAmount = tokenIndex === 0 ? formData.token0Amount : formData.token1Amount
-    const tokenLabel = tokenIndex === 0 ? "0" : "1"
-
-    if (!tokenAddress) {
-      alert(`Please provide token ${tokenLabel} address before funding.`)
+  const approveTokens = async () => {
+    // Validation
+    if (!formData.token0 || !formData.token1) {
+      alert("Please provide both token addresses.")
       return false
     }
-    if (!tokenAmount) {
-      alert(`Please provide a seed amount for token ${tokenLabel}.`)
+    if (!formData.token0Amount || !formData.token1Amount) {
+      alert("Please provide seed amounts for both tokens.")
       return false
     }
     if (!address) {
@@ -388,7 +360,7 @@ export default function DeployPage() {
       return false
     }
     if (chainId && chainId !== uniChainSepolia.id) {
-      alert("Switch to UniChain Sepolia to fund the pool.")
+      alert("Switch to UniChain Sepolia to approve tokens.")
       return false
     }
     const launchpadAddress = PropAMMContracts[uniChainSepolia.id]
@@ -401,55 +373,65 @@ export default function DeployPage() {
       return false
     }
 
-    const amount = await getTokenAmount(tokenAddress as `0x${string}`, tokenAmount)
-    if (amount === BigInt(0)) {
-      alert("Seed amount must be greater than zero.")
-      return false
-    }
-
-    setPendingTokenIndex(tokenIndex)
+    setIsApprovingTokens(true)
     try {
-      // Check current allowance
-      const currentAllowance = await publicClient.readContract({
+      const [amount0, amount1] = await Promise.all([
+        getTokenAmount(formData.token0 as `0x${string}`, formData.token0Amount),
+        getTokenAmount(formData.token1 as `0x${string}`, formData.token1Amount),
+      ])
+
+      if (amount0 === BigInt(0) || amount1 === BigInt(0)) {
+        alert("Seed amounts must be greater than zero.")
+        return false
+      }
+
+      // Check and approve token0
+      const allowance0 = await publicClient.readContract({
         abi: erc20Abi,
-        address: tokenAddress as `0x${string}`,
+        address: formData.token0 as `0x${string}`,
         functionName: "allowance",
         args: [address, launchpadAddress],
       })
 
-      // Only approve if current allowance is insufficient
-      if (currentAllowance < amount) {
-        const approveHash = await writeContractAsync({
+      if (allowance0 < amount0) {
+        const approveHash0 = await writeContractAsync({
           abi: erc20Abi,
-          address: tokenAddress as `0x${string}`,
+          address: formData.token0 as `0x${string}`,
           functionName: "approve",
-          args: [launchpadAddress, amount],
+          args: [launchpadAddress, amount0],
           chainId: uniChainSepolia.id,
         })
-        await publicClient.waitForTransactionReceipt({ hash: approveHash })
+        await publicClient.waitForTransactionReceipt({ hash: approveHash0 })
       }
 
-      // Transfer tokens to launchpad
-      const transferHash = await writeContractAsync({
+      // Check and approve token1
+      const allowance1 = await publicClient.readContract({
         abi: erc20Abi,
-        address: tokenAddress as `0x${string}`,
-        functionName: "transfer",
-        args: [launchpadAddress, amount],
-        chainId: uniChainSepolia.id,
+        address: formData.token1 as `0x${string}`,
+        functionName: "allowance",
+        args: [address, launchpadAddress],
       })
-      await publicClient.waitForTransactionReceipt({ hash: transferHash })
-      
-      setFundingStatus((prev) =>
-        tokenIndex === 0 ? { ...prev, token0: true } : { ...prev, token1: true }
-      )
-      alert(`Token ${tokenLabel} transferred to the launchpad successfully.`)
+
+      if (allowance1 < amount1) {
+        const approveHash1 = await writeContractAsync({
+          abi: erc20Abi,
+          address: formData.token1 as `0x${string}`,
+          functionName: "approve",
+          args: [launchpadAddress, amount1],
+          chainId: uniChainSepolia.id,
+        })
+        await publicClient.waitForTransactionReceipt({ hash: approveHash1 })
+      }
+
+      setApprovalsComplete(true)
+      alert("Both tokens approved successfully! The contract will pull the assets when you launch.")
       return true
     } catch (error) {
       console.error(error)
-      alert((error as Error).message || `Failed to fund token ${tokenLabel}.`)
+      alert((error as Error).message || "Failed to approve tokens.")
       return false
     } finally {
-      setPendingTokenIndex(null)
+      setIsApprovingTokens(false)
     }
   }
 
@@ -462,6 +444,14 @@ export default function DeployPage() {
       alert("Deploy both adapters before launching.")
       return
     }
+    if (!formData.curator) {
+      alert("Please provide a curator address.")
+      return
+    }
+    if (!address) {
+      alert("Connect your wallet to continue.")
+      return
+    }
     if (chainId && chainId !== uniChainSepolia.id) {
       alert("Please switch your wallet to UniChain Sepolia.")
       return
@@ -472,38 +462,59 @@ export default function DeployPage() {
       return
     }
 
-    const [token0SeedAmt, token1SeedAmt] = await Promise.all([
-      getTokenAmount(formData.token0 as `0x${string}`, formData.token0Amount),
-      getTokenAmount(formData.token1 as `0x${string}`, formData.token1Amount),
-    ])
-
-    const launchConfig = {
-      token0: formData.token0 as `0x${string}`,
-      token1: formData.token1 as `0x${string}`,
-      token0SeedAmt,
-      token1SeedAmt,
-      strategyAdapter: formData.strategyAdapter as `0x${string}`,
-      thresholdAdapter: formData.thresholdAdapter as `0x${string}`,
-      poolName: formData.poolName,
-      curatorInfo: {
-        curator: formData.curator as `0x${string}`,
-        name: formData.curatorName,
-        website: formData.curatorWebsite,
-      },
-    }
-
     try {
+      // Sort tokens alphabetically (lowercase comparison)
+      const token0Lower = formData.token0.toLowerCase()
+      const token1Lower = formData.token1.toLowerCase()
+      const shouldSwap = token0Lower > token1Lower
+
+      const sortedToken0 = shouldSwap ? token1Lower : token0Lower
+      const sortedToken1 = shouldSwap ? token0Lower : token1Lower
+      const sortedToken0Amount = shouldSwap ? formData.token1Amount : formData.token0Amount
+      const sortedToken1Amount = shouldSwap ? formData.token0Amount : formData.token1Amount
+
+      const [token0SeedAmt, token1SeedAmt] = await Promise.all([
+        getTokenAmount(sortedToken0 as `0x${string}`, sortedToken0Amount),
+        getTokenAmount(sortedToken1 as `0x${string}`, sortedToken1Amount),
+      ])
+
+      // Ensure all addresses are valid checksummed addresses
+      const launchConfig = {
+        token0: sortedToken0 as `0x${string}`,
+        token1: sortedToken1 as `0x${string}`,
+        token0SeedAmt,
+        token1SeedAmt,
+        strategyAdapter: formData.strategyAdapter.toLowerCase() as `0x${string}`,
+        thresholdAdapter: formData.thresholdAdapter.toLowerCase() as `0x${string}`,
+        poolName: formData.poolName,
+        curatorInfo: {
+          curator: formData.curator.toLowerCase() as `0x${string}`,
+          name: formData.curatorName || "",
+          website: formData.curatorWebsite || "",
+        },
+      }
+
+      console.log("Launching pool with config:", launchConfig)
+
       const hash = await writeContractAsync({
         abi: PropAMMLaunchPadAbi,
-        address: launchpadAddress,
+        address: launchpadAddress as `0x${string}`,
         functionName: "launch",
         args: [launchConfig],
         chainId: uniChainSepolia.id,
       })
+      
       setTxHash(hash)
-      alert("Deployment transaction sent on UniChain Sepolia.")
+      alert(`Deployment transaction sent! Hash: ${hash}`)
+      
+      // Wait for transaction confirmation if publicClient is available
+      if (publicClient) {
+        const receipt = await publicClient.waitForTransactionReceipt({ hash })
+        console.log("Transaction confirmed:", receipt)
+        alert("Pool launched successfully!")
+      }
     } catch (error) {
-      console.error(error)
+      console.error("Deployment error:", error)
       alert((error as Error).message || "Failed to deploy AMM.")
     }
   }
@@ -518,15 +529,18 @@ export default function DeployPage() {
       ? formData.customThresholdCode || "// Paste your threshold module here..."
       : THRESHOLD_SNIPPETS[selectedThreshold as keyof typeof THRESHOLD_SNIPPETS] || THRESHOLD_SNIPPETS.thresholdA
 
-  const fundingComplete = fundingStatus.token0 && fundingStatus.token1
+  const isNextDisabled = isApprovingTokens || isDeployingStrategy || isDeployingThreshold
 
-  const isNextDisabled =
-    pendingTokenIndex !== null ||
-    isDeployingStrategy ||
-    isDeployingThreshold ||
-    (currentStep === 2 && !fundingComplete) ||
-    (currentStep === 3 && !formData.strategyAdapter) ||
-    (currentStep === 4 && !formData.thresholdAdapter)
+  const canDeploy = 
+    formData.poolName &&
+    formData.token0 &&
+    formData.token1 &&
+    formData.token0Amount &&
+    formData.token1Amount &&
+    formData.curator &&
+    formData.strategyAdapter &&
+    formData.thresholdAdapter &&
+    approvalsComplete
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#03030f] text-foreground">
@@ -538,11 +552,11 @@ export default function DeployPage() {
 
       <Navigation />
 
-      <div className="container mx-auto max-w-6xl px-6 pt-32 pb-20">
-        <div className="mx-auto max-w-3xl">
+      <div className="container mx-auto px-6 pt-32 pb-20" style={{ maxWidth: currentStep === 3 || currentStep === 4 ? '100%' : '72rem' }}>
+        <div className="mx-auto" style={{ maxWidth: currentStep === 3 || currentStep === 4 ? '100%' : '48rem' }}>
           {/* Header */}
           <div className="mb-12 text-center">
-            <h1 className="mb-4 text-4xl font-bold tracking-tight">Deploy New AMM</h1>
+            <h1 className="mb-4 text-4xl font-bold tracking-tight">Deploy New Prop AMM</h1>
             <p className="text-lg text-muted-foreground">
               Create your own automated market maker pool in a few simple steps
             </p>
@@ -610,7 +624,6 @@ export default function DeployPage() {
                       value={formData.curator}
                       onChange={(e) => handleInputChange("curator", e.target.value)}
                     />
-                    <p className="text-xs text-muted-foreground">Primary wallet managing the pool.</p>
                   </div>
 
                   <div className="space-y-2">
@@ -621,7 +634,6 @@ export default function DeployPage() {
                       value={formData.curatorName}
                       onChange={(e) => handleInputChange("curatorName", e.target.value)}
                     />
-                    <p className="text-xs text-muted-foreground">Public name surfaced to LPs.</p>
                   </div>
 
                   <div className="space-y-2">
@@ -632,7 +644,6 @@ export default function DeployPage() {
                       value={formData.curatorWebsite}
                       onChange={(e) => handleInputChange("curatorWebsite", e.target.value)}
                     />
-                    <p className="text-xs text-muted-foreground">Optional disclosures or documentation.</p>
                   </div>
                 </div>
               </div>
@@ -666,7 +677,6 @@ export default function DeployPage() {
                         value={formData.token0}
                         onChange={(e) => handleInputChange("token0", e.target.value)}
                       />
-                      <p className="text-xs text-muted-foreground">Address of the first asset.</p>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="token1">Token 1 Address</Label>
@@ -676,11 +686,10 @@ export default function DeployPage() {
                         value={formData.token1}
                         onChange={(e) => handleInputChange("token1", e.target.value)}
                       />
-                      <p className="text-xs text-muted-foreground">Address of the second asset.</p>
                     </div>
                   </div>
 
-                  <div className="space-y-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor="token0Amount">Token 0 Seed Amount</Label>
                       <Input
@@ -690,7 +699,6 @@ export default function DeployPage() {
                         value={formData.token0Amount}
                         onChange={(e) => handleInputChange("token0Amount", e.target.value)}
                       />
-                      <p className="text-xs text-muted-foreground">Amount of token0 to deposit.</p>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="token1Amount">Token 1 Seed Amount</Label>
@@ -701,74 +709,55 @@ export default function DeployPage() {
                         value={formData.token1Amount}
                         onChange={(e) => handleInputChange("token1Amount", e.target.value)}
                       />
-                      <p className="text-xs text-muted-foreground">Amount of token1 to deposit.</p>
                     </div>
                   </div>
 
                   <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                    <div>
-                      <h3 className="text-lg font-semibold">Fund Launchpad</h3>
+                    <div className="mb-4">
+                      <h3 className="text-lg font-semibold">Approve Tokens</h3>
                       <p className="text-xs text-muted-foreground">
-                        Approve and transfer each token separately before moving to strategy configuration.
+                        Approve both tokens so the contract can pull the assets when you launch the pool.
                       </p>
                     </div>
-                    <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                      <div className="space-y-3 rounded-xl border border-white/10 bg-[#050611]/60 p-4 text-sm">
+                    
+                    <div className="space-y-3 rounded-xl border border-white/10 bg-[#050611]/60 p-4">
+                      <div className="grid gap-4 sm:grid-cols-2 text-sm">
                         <div className="space-y-1">
                           <p className="text-muted-foreground">Token 0</p>
-                          <p className="font-mono text-xs break-all">{formData.token0 || "0x000..."}</p>
+                          <p className="font-mono text-xs break-all">{formData.token0 || "Not set"}</p>
                           <p className="text-xs text-muted-foreground">Amount: {formData.token0Amount || "0"}</p>
                         </div>
-                        <Button
-                          className="w-full"
-                          onClick={() => fundToken(0)}
-                          disabled={
-                            pendingTokenIndex !== null ||
-                            fundingStatus.token0 ||
-                            !formData.token0 ||
-                            !formData.token0Amount
-                          }
-                        >
-                          {pendingTokenIndex === 0
-                            ? "Funding token 0..."
-                            : fundingStatus.token0
-                              ? "Token 0 funded"
-                              : "Approve & Transfer Token 0"}
-                        </Button>
-                        {fundingStatus.token0 && (
-                          <p className="flex items-center gap-2 text-xs text-primary">
-                            <Check className="h-3 w-3" /> Ready for launchpad
-                          </p>
-                        )}
-                      </div>
-                      <div className="space-y-3 rounded-xl border border-white/10 bg-[#050611]/60 p-4 text-sm">
                         <div className="space-y-1">
                           <p className="text-muted-foreground">Token 1</p>
-                          <p className="font-mono text-xs break-all">{formData.token1 || "0x000..."}</p>
+                          <p className="font-mono text-xs break-all">{formData.token1 || "Not set"}</p>
                           <p className="text-xs text-muted-foreground">Amount: {formData.token1Amount || "0"}</p>
                         </div>
-                        <Button
-                          className="w-full"
-                          onClick={() => fundToken(1)}
-                          disabled={
-                            pendingTokenIndex !== null ||
-                            fundingStatus.token1 ||
-                            !formData.token1 ||
-                            !formData.token1Amount
-                          }
-                        >
-                          {pendingTokenIndex === 1
-                            ? "Funding token 1..."
-                            : fundingStatus.token1
-                              ? "Token 1 funded"
-                              : "Approve & Transfer Token 1"}
-                        </Button>
-                        {fundingStatus.token1 && (
-                          <p className="flex items-center gap-2 text-xs text-primary">
-                            <Check className="h-3 w-3" /> Ready for launchpad
-                          </p>
-                        )}
                       </div>
+                      
+                      <Button
+                        className="w-full"
+                        onClick={approveTokens}
+                        disabled={
+                          isApprovingTokens ||
+                          approvalsComplete ||
+                          !formData.token0 ||
+                          !formData.token1 ||
+                          !formData.token0Amount ||
+                          !formData.token1Amount
+                        }
+                      >
+                        {isApprovingTokens
+                          ? "Approving tokens..."
+                          : approvalsComplete
+                            ? "✓ Both tokens approved"
+                            : "Approve Both Tokens"}
+                      </Button>
+                      
+                      {approvalsComplete && (
+                        <p className="flex items-center gap-2 text-xs text-white">
+                          <Check className="h-3 w-3 text-primary" /> Approvals complete! Contract will pull assets on launch.
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -779,7 +768,7 @@ export default function DeployPage() {
             {currentStep === 3 && (
               <div className="space-y-6">
                 <div className="flex flex-col gap-6 lg:flex-row">
-                  <div className="rounded-2xl border border-white/10 bg-white/5 p-6 lg:w-1/2 xl:w-5/12 max-w-5xl">
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-6 lg:w-2/5">
                     <div className="space-y-4">
                       <h2 className="text-2xl font-semibold">Strategy Adapter</h2>
                       <p className="text-sm text-muted-foreground">
@@ -795,7 +784,6 @@ export default function DeployPage() {
                             <div className="flex items-start justify-between">
                               <div>
                                 <h3 className="text-lg font-semibold">{strategy.title}</h3>
-                                <p className="text-sm text-muted-foreground">{strategy.description}</p>
                               </div>
                               <div
                                 className={`h-4 w-4 rounded-full border ${selectedStrategy === strategy.id ? "border-primary bg-primary" : "border-white/30"}`}
@@ -806,7 +794,7 @@ export default function DeployPage() {
                       </div>
                     </div>
                   </div>
-                  <div className="rounded-2xl border border-primary/30 bg-primary/5 p-6 lg:flex-1 lg:min-w-0">
+                  <div className="rounded-2xl border border-primary/30 bg-white/5 p-6 lg:w-3/5">
                     <h3 className="font-semibold">Adapter Preview</h3>
                     <p className="text-xs text-muted-foreground">Deployed before proceeding to threshold guardrails.</p>
                     {selectedStrategy === "custom" ? (
@@ -836,10 +824,10 @@ export default function DeployPage() {
                       </Button>
                       {formData.strategyAdapter && (
                         <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-xs">
-                          <p className="text-muted-foreground">Adapter deployed at:</p>
-                          <p className="font-mono text-primary break-all">{formData.strategyAdapter}</p>
-                          <p className="flex items-center gap-2 text-xs text-primary mt-2">
-                            <Check className="h-3 w-3" /> Ready for next step
+                          <p className="text-white/60">Adapter deployed at:</p>
+                          <p className="font-mono text-white break-all">{formData.strategyAdapter}</p>
+                          <p className="flex items-center gap-2 text-xs text-white mt-2">
+                            <Check className="h-3 w-3 text-primary" /> Ready for next step
                           </p>
                         </div>
                       )}
@@ -853,7 +841,7 @@ export default function DeployPage() {
             {currentStep === 4 && (
               <div className="space-y-6">
                 <div className="flex flex-col gap-6 lg:flex-row">
-                  <div className="rounded-2xl border border-white/10 bg-white/5 p-6 lg:w-1/2 xl:w-5/12">
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-6 lg:w-2/5">
                     <div className="space-y-4">
                       <h2 className="text-2xl font-semibold">Threshold Adapter</h2>
                       <p className="text-sm text-muted-foreground">
@@ -869,7 +857,6 @@ export default function DeployPage() {
                             <div className="flex items-start justify-between">
                               <div>
                                 <h3 className="text-lg font-semibold">{strategy.title}</h3>
-                                <p className="text-sm text-muted-foreground">{strategy.description}</p>
                               </div>
                               <div
                                 className={`h-4 w-4 rounded-full border ${selectedThreshold === strategy.id ? "border-primary bg-primary" : "border-white/30"}`}
@@ -880,7 +867,7 @@ export default function DeployPage() {
                       </div>
                     </div>
                   </div>
-                  <div className="rounded-2xl border border-primary/30 bg-primary/5 p-6 lg:flex-1 lg:min-w-0">
+                  <div className="rounded-2xl border border-primary/30 bg-primary/5 p-6 lg:w-3/5">
                     <h3 className="font-semibold">Threshold Module</h3>
                     <p className="text-xs text-muted-foreground">Ensure safe execution before final launch.</p>
                     {selectedThreshold === "thresholdCustom" ? (
@@ -911,10 +898,10 @@ export default function DeployPage() {
                       </Button>
                       {formData.thresholdAdapter && (
                         <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-xs">
-                          <p className="text-muted-foreground">Threshold adapter deployed at:</p>
-                          <p className="font-mono text-primary break-all">{formData.thresholdAdapter}</p>
-                          <p className="flex items-center gap-2 text-xs text-primary mt-2">
-                            <Check className="h-3 w-3" /> Ready for launch
+                          <p className="text-white/60">Threshold adapter deployed at:</p>
+                          <p className="font-mono text-white break-all">{formData.thresholdAdapter}</p>
+                          <p className="flex items-center gap-2 text-xs text-white mt-2">
+                            <Check className="h-3 w-3 text-primary" /> Ready for launch
                           </p>
                         </div>
                       )}
@@ -928,98 +915,110 @@ export default function DeployPage() {
             {currentStep === 5 && (
               <div className="space-y-6">
                 <div>
-                  <h2 className="mb-2 text-2xl font-semibold">Review & Deploy</h2>
-                  <p className="text-muted-foreground">Review your launch configuration before deploying</p>
+                  <h2 className="mb-2 text-2xl font-semibold text-white">Review & Deploy</h2>
+                  <p className="text-white/60">Review your launch configuration before deploying</p>
                 </div>
 
                 <div className="grid gap-4 lg:grid-cols-2">
                   <div className="rounded-lg border border-white/10 bg-white/5 p-4">
-                    <h3 className="mb-3 font-semibold">Curator</h3>
+                    <h3 className="mb-3 font-semibold text-white">Curator</h3>
                     <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Address:</span>
-                        <span className="font-mono">{formData.curator || "Not set"}</span>
+                      <div>
+                        <span className="text-white/60">Address:</span>
+                        <p className="font-mono text-xs break-all mt-1 text-white">{formData.curator || "Not set"}</p>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Name:</span>
-                        <span className="font-semibold">{formData.curatorName || "Not set"}</span>
+                      <div>
+                        <span className="text-white/60">Name:</span>
+                        <p className="font-semibold mt-1 text-white">{formData.curatorName || "Not set"}</p>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Website:</span>
-                        <span className="font-semibold">{formData.curatorWebsite || "Not set"}</span>
+                      <div>
+                        <span className="text-white/60">Website:</span>
+                        <p className="font-semibold break-all mt-1 text-white">{formData.curatorWebsite || "Not set"}</p>
                       </div>
                     </div>
                   </div>
 
                   <div className="rounded-lg border border-white/10 bg-white/5 p-4">
-                    <h3 className="mb-3 font-semibold">Launch Config</h3>
+                    <h3 className="mb-3 font-semibold text-white">Pool Configuration</h3>
                     <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Pool Name:</span>
-                        <span className="font-semibold">{formData.poolName || "Not set"}</span>
+                      <div>
+                        <span className="text-white/60">Pool Name:</span>
+                        <p className="font-semibold mt-1 text-white">{formData.poolName || "Not set"}</p>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Token0 / Token1:</span>
-                        <span className="font-mono text-xs">
-                          {formData.token0 || "Not set"} / {formData.token1 || "Not set"}
-                        </span>
+                      <div>
+                        <span className="text-white/60">Token 0 Address:</span>
+                        <p className="font-mono text-xs break-all mt-1 text-white">{formData.token0 || "Not set"}</p>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Seed Amounts:</span>
-                        <span className="font-semibold">
-                          {formData.token0Amount || "0"} / {formData.token1Amount || "0"}
-                        </span>
+                      <div>
+                        <span className="text-white/60">Token 0 Amount:</span>
+                        <p className="font-semibold mt-1 text-white">{formData.token0Amount || "0"}</p>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Strategy Option:</span>
-                        <span className="font-semibold">{selectedStrategy}</span>
+                      <div>
+                        <span className="text-white/60">Token 1 Address:</span>
+                        <p className="font-mono text-xs break-all mt-1 text-white">{formData.token1 || "Not set"}</p>
                       </div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-lg border border-white/10 bg-white/5 p-4">
-                    <h3 className="mb-3 font-semibold">Adapters</h3>
-                    <div className="space-y-4 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Threshold Option:</span>
-                        <span className="font-semibold">{selectedThreshold}</span>
-                      </div>
-                    </div>
-                    <div className="mt-4 space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="strategyAdapter">Strategy Adapter Address</Label>
-                        <Input
-                          id="strategyAdapter"
-                          placeholder="0x..."
-                          value={formData.strategyAdapter}
-                          onChange={(e) => handleInputChange("strategyAdapter", e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="thresholdAdapter">Threshold Adapter Address</Label>
-                        <Input
-                          id="thresholdAdapter"
-                          placeholder="0x..."
-                          value={formData.thresholdAdapter}
-                          onChange={(e) => handleInputChange("thresholdAdapter", e.target.value)}
-                        />
+                      <div>
+                        <span className="text-white/60">Token 1 Amount:</span>
+                        <p className="font-semibold mt-1 text-white">{formData.token1Amount || "0"}</p>
                       </div>
                     </div>
                   </div>
 
                   <div className="rounded-lg border border-white/10 bg-white/5 p-4">
-                    <h3 className="mb-3 font-semibold text-primary">Important</h3>
+                    <h3 className="mb-3 font-semibold text-white">Adapters</h3>
+                    <div className="space-y-3 text-sm">
+                      <div>
+                        <span className="text-white/60">Strategy Option:</span>
+                        <p className="font-semibold mt-1 text-white">{selectedStrategy}</p>
+                      </div>
+                      <div>
+                        <span className="text-white/60">Strategy Address:</span>
+                        <p className="font-mono text-xs break-all mt-1 text-white">{formData.strategyAdapter || "Not set"}</p>
+                      </div>
+                      <div>
+                        <span className="text-white/60">Threshold Option:</span>
+                        <p className="font-semibold mt-1 text-white">{selectedThreshold}</p>
+                      </div>
+                      <div>
+                        <span className="text-white/60">Threshold Address:</span>
+                        <p className="font-mono text-xs break-all mt-1 text-white">{formData.thresholdAdapter || "Not set"}</p>
+                      </div>
+                      <div>
+                        <span className="text-white/60">Approvals:</span>
+                        <p className="mt-1 flex items-center gap-2">
+                          {approvalsComplete ? (
+                            <>
+                              <Check className="h-4 w-4 text-primary" />
+                              <span className="font-semibold text-white">Complete</span>
+                            </>
+                          ) : (
+                            <span className="text-white">Pending</span>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+                    <h3 className="mb-3 font-semibold text-white">Important</h3>
                     <div className="flex items-start gap-3">
-                      <div className="mt-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-accent-foreground">
+                      <div className="mt-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-[#7731EA]/20 text-white">
                         <span className="text-xs">!</span>
                       </div>
                       <div className="flex-1 text-sm">
-                        <div className="text-muted-foreground">
-                          Once deployed, token selections and adapters cannot be changed. Review the LaunchConfig
+                        <div className="text-white/60">
+                          Once deployed, token selections and adapters cannot be changed. Review the configuration
                           carefully before signing the transaction.
                         </div>
                       </div>
                     </div>
+                    {!canDeploy && (
+                      <div className="mt-4 rounded-lg border border-[#7731EA]/20 bg-[#7731EA]/10 p-3">
+                        <p className="text-xs text-white">
+                          ⚠️ Please complete all required fields and approve tokens before deploying.
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   {txHash && (
@@ -1038,7 +1037,7 @@ export default function DeployPage() {
                 variant="outline"
                 onClick={handlePrevious}
                 disabled={currentStep === 1}
-                className="gap-2 border-white/20 bg-transparent text-foreground"
+                className="gap-2 border-white/20 bg-transparent text-white hover:text-white hover:bg-white/10"
               >
                 <ChevronLeft className="h-4 w-4" />
                 Previous
@@ -1050,13 +1049,13 @@ export default function DeployPage() {
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               ) : (
-                <Button onClick={handleDeploy} className="gap-2" disabled={isLaunchPending}>
+                <Button onClick={handleDeploy} className="gap-2" disabled={isLaunchPending || !canDeploy}>
                   {isLaunchPending ? (
                     "Deploying..."
                   ) : (
                     <>
                       <Check className="h-4 w-4" />
-                      Deploy AMM
+                      Deploy Prop AMM
                     </>
                   )}
                 </Button>
