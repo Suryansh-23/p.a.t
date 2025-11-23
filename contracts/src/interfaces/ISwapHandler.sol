@@ -14,6 +14,8 @@ interface ISwapHandler {
         address sender;
         bool zeroForOne;
         int256 amountSpecified;
+        address tokenIn;
+        address tokenOut;
     }
 
     /// @notice Callback data for unlock pattern

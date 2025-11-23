@@ -2,7 +2,7 @@
 pragma solidity 0.8.30;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {BaseHook} from "@uniswap/v4-periphery/src/utils/BaseHook.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
@@ -10,6 +10,7 @@ import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {BalanceDelta, BalanceDeltaLibrary, toBalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {CurrencySettler} from "@uniswap/v4-core/test/utils/CurrencySettler.sol";
 import {
     BeforeSwapDelta,
     BeforeSwapDeltaLibrary,
@@ -19,9 +20,8 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
 
-import {BaseStrategyAdapter} from "@adapters/base/BaseStrategyAdapter.sol";
-import {BaseThresholdAdapter} from "@adapters/base/BaseThresholdAdapter.sol";
 import {ISwapHandler} from "@interfaces/ISwapHandler.sol";
+import {IStrategyAdapter} from "@interfaces/IStrategyAdapter.sol";
 
 /// @title PropHook - Proprietary AMM with Strategy-Based Pricing
 /// @notice Hook enabling market makers to launch proprietary pools with custom pricing strategies
@@ -30,6 +30,7 @@ contract PropHook is BaseHook, Ownable {
     using BalanceDeltaLibrary for BalanceDelta;
     using SafeCast for uint256;
     using PoolIdLibrary for PoolKey;
+    using CurrencySettler for Currency;
 
     ////////////////////////////////////////////////////
     ////////////////////// Structs /////////////////////
@@ -67,6 +68,7 @@ contract PropHook is BaseHook, Ownable {
     error PropHook__InvalidStrategyAdapter();
     error PropHook__Unauthorized();
     error PropHook__InsufficientReserves();
+    error PropHook__NoLiquidityAllowed();
 
     ////////////////////////////////////////////////////
     ////////////////////// Events //////////////////////
@@ -146,17 +148,17 @@ contract PropHook is BaseHook, Ownable {
             beforeInitialize: false,
             afterInitialize: false,
             beforeAddLiquidity: true,
-            afterAddLiquidity: true,
+            afterAddLiquidity: false,
             beforeRemoveLiquidity: true,
-            afterRemoveLiquidity: true,
+            afterRemoveLiquidity: false,
             beforeSwap: true,
             afterSwap: false,
             beforeDonate: false,
             afterDonate: false,
             beforeSwapReturnDelta: true,
             afterSwapReturnDelta: false,
-            afterAddLiquidityReturnDelta: true,
-            afterRemoveLiquidityReturnDelta: true
+            afterAddLiquidityReturnDelta: false,
+            afterRemoveLiquidityReturnDelta: false
         });
     }
 
@@ -166,44 +168,7 @@ contract PropHook is BaseHook, Ownable {
         ModifyLiquidityParams calldata params,
         bytes calldata hookData
     ) internal override returns (bytes4) {
-        if (sender != launchpad) revert PropHook__Unauthorized();
-
-        return IHooks.beforeAddLiquidity.selector;
-    }
-
-    /// @notice After adding liquidity - override the standard delta to accept single-sided or custom amounts
-    /// @dev This is where we bypass the x*y=k curve entirely
-    function _afterAddLiquidity(
-        address,
-        PoolKey calldata key,
-        ModifyLiquidityParams calldata,
-        BalanceDelta delta,
-        BalanceDelta feesAccrued,
-        bytes calldata hookData
-    ) internal override returns (bytes4, BalanceDelta) {
-        // Decode the desired custom amounts from hookData
-        (address asset, uint256 amountDesired) = abi.decode(hookData, (address, uint256));
-
-        // Convert to int128 (negative because user is providing tokens)
-        int128 customAmount = -int128(int256(amountDesired));
-
-        BalanceDelta hookBalanceDelta;
-
-        {
-            int128 hookDelta;
-
-            if (Currency.wrap(asset) == key.currency0) {
-                hookDelta = customAmount - (delta.amount0() - feesAccrued.amount0());
-                hookBalanceDelta = toBalanceDelta(hookDelta, 0);
-            } else {
-                hookDelta = customAmount - (delta.amount1() - feesAccrued.amount1());
-                hookBalanceDelta = toBalanceDelta(0, hookDelta);
-            }
-        }
-
-        hookReserves[PoolId.unwrap(key.toId())][Currency.wrap(asset)] += amountDesired;
-
-        return (IHooks.afterAddLiquidity.selector, hookBalanceDelta);
+        revert PropHook__NoLiquidityAllowed();
     }
 
     /// @notice Before removing liquidity
@@ -213,10 +178,7 @@ contract PropHook is BaseHook, Ownable {
         ModifyLiquidityParams calldata params,
         bytes calldata hookData
     ) internal override returns (bytes4) {
-        // hookData should contain the desired withdrawal amounts
-        if (sender != launchpad) revert PropHook__Unauthorized();
-
-        return IHooks.beforeRemoveLiquidity.selector;
+        revert PropHook__NoLiquidityAllowed();
     }
 
     /// @notice After removing liquidity - allow custom withdrawal amounts
@@ -284,6 +246,7 @@ contract PropHook is BaseHook, Ownable {
         override
         returns (bytes4, BeforeSwapDelta, uint24)
     {
+        (address user) = abi.decode(hookData, (address));
         bytes32 poolId = PoolId.unwrap(key.toId());
         PoolConfig memory config = poolConfigs[poolId];
 
@@ -292,10 +255,14 @@ contract PropHook is BaseHook, Ownable {
 
         // Check if caller is authorized SwapHandler (TEE)
         if (sender == swapHandler) {
-            // TEE batch execution - execute swap normally
-            return _executeSwapForTEE(poolId, key, config, params);
+            return _executeSwapForTEE(poolId, key, config, params, user);
         } else {
             emit SwapRequested(key.toId(), sender, params.zeroForOne, params.amountSpecified);
+            uint256 amountTaken = uint256(-int256(params.amountSpecified));
+            Currency input = params.zeroForOne ? key.currency0 : key.currency1;
+            poolManager.mint(address(this), input.toId(), amountTaken);
+
+            return (BaseHook.beforeSwap.selector, toBeforeSwapDelta(amountTaken.toInt128(), 0), 0);
         }
     }
 
@@ -304,46 +271,42 @@ contract PropHook is BaseHook, Ownable {
         bytes32 poolId,
         PoolKey calldata key,
         PoolConfig memory config,
-        SwapParams calldata params
+        SwapParams calldata params,
+        address user
     ) internal returns (bytes4, BeforeSwapDelta, uint24) {
-        // Get current reserves
-        uint256 reserve0 = hookReserves[poolId][key.currency0];
-        uint256 reserve1 = hookReserves[poolId][key.currency1];
-
         // Get price from strategy adapter with swap direction and amount
-        uint256 price = BaseStrategyAdapter(config.strategyAdapter)
+        uint256 price = IStrategyAdapter(config.strategyAdapter)
             .price(
                 ISwapHandler.SwapData({
-                    sender: msg.sender, zeroForOne: params.zeroForOne, amountSpecified: params.amountSpecified
+                    sender: msg.sender,
+                    zeroForOne: params.zeroForOne,
+                    amountSpecified: params.amountSpecified,
+                    tokenIn: params.zeroForOne ? Currency.unwrap(key.currency0) : Currency.unwrap(key.currency1),
+                    tokenOut: params.zeroForOne ? Currency.unwrap(key.currency1) : Currency.unwrap(key.currency0)
                 })
             );
 
         // Calculate swap amounts based on strategy price
         BeforeSwapDelta beforeSwapDelta =
-            _calculateSwapDelta(params.amountSpecified, params.zeroForOne, price, reserve0, reserve1);
-
-        // Update reserves based on the swap
-        _updateReservesFromSwap(poolId, key, params, beforeSwapDelta);
+            _calculateSwapDelta(key, params.amountSpecified, params.zeroForOne, price, user);
 
         emit SwapExecutedByTEE(key.toId(), params.zeroForOne, params.amountSpecified, price);
 
-        return (IHooks.beforeSwap.selector, beforeSwapDelta, 0);
+        return (IHooks.beforeSwap.selector, toBeforeSwapDelta(0, 0), 0);
     }
 
     /// @notice Calculate swap delta based on strategy price
     /// @param amountSpecified The amount specified by the user (negative for exact input, positive for exact output)
     /// @param zeroForOne Direction of the swap
     /// @param price The price from strategy adapter (scaled by 1e18)
-    /// @param reserve0 Current reserve of token0
-    /// @param reserve1 Current reserve of token1
     /// @return delta The calculated before swap delta
     function _calculateSwapDelta(
+        PoolKey memory key,
         int256 amountSpecified,
         bool zeroForOne,
         uint256 price,
-        uint256 reserve0,
-        uint256 reserve1
-    ) internal pure returns (BeforeSwapDelta delta) {
+        address user
+    ) internal returns (BeforeSwapDelta delta) {
         if (amountSpecified == 0) return BeforeSwapDeltaLibrary.ZERO_DELTA;
 
         int128 specifiedDelta;
@@ -359,25 +322,23 @@ contract PropHook is BaseHook, Ownable {
                 // amountOut = amountIn * price / 1e18
                 amountOut = (amountIn * price) / 1e18;
 
-                // Check sufficient reserves
-                if (amountOut > reserve1) {
-                    amountOut = reserve1; // Cap at available reserves
-                }
-
                 specifiedDelta = int128(int256(amountIn)); // Hook takes token0
                 unspecifiedDelta = -int128(int256(amountOut)); // Hook gives token1
+
+                //key.currency0.take(poolManager, address(this), amountIn, true);
             } else {
                 // Selling token1 for token0
                 // amountOut = amountIn * 1e18 / price
                 amountOut = (amountIn * 1e18) / price;
 
-                if (amountOut > reserve0) {
-                    amountOut = reserve0;
-                }
-
                 specifiedDelta = int128(int256(amountIn)); // Hook takes token1
                 unspecifiedDelta = -int128(int256(amountOut)); // Hook gives token0
+
+                key.currency0.take(poolManager, address(this), amountIn, true);
+                key.currency1.settle(poolManager, address(this), amountOut, true);
             }
+
+            key.currency1.transfer(user, amountOut);
         }
         // Exact output (positive amountSpecified)
         else {
@@ -391,6 +352,8 @@ contract PropHook is BaseHook, Ownable {
 
                 specifiedDelta = -int128(int256(amountOut)); // Hook gives token1
                 unspecifiedDelta = int128(int256(amountIn)); // Hook takes token0
+                key.currency0.take(poolManager, address(this), amountIn, true);
+                key.currency1.settle(poolManager, address(this), amountOut, true);
             } else {
                 // Want exact token0 out, calculate token1 in
                 // amountIn = amountOut * price / 1e18
@@ -398,62 +361,12 @@ contract PropHook is BaseHook, Ownable {
 
                 specifiedDelta = -int128(int256(amountOut)); // Hook gives token0
                 unspecifiedDelta = int128(int256(amountIn)); // Hook takes token1
+                key.currency0.take(poolManager, address(this), amountIn, true);
+                key.currency1.settle(poolManager, address(this), amountOut, true);
             }
         }
 
         return toBeforeSwapDelta(specifiedDelta, unspecifiedDelta);
-    }
-
-    /// @notice Update reserves after a swap
-    function _updateReservesFromSwap(
-        bytes32 poolId,
-        PoolKey calldata key,
-        SwapParams calldata params,
-        BeforeSwapDelta delta
-    ) internal {
-        int128 amount0Delta;
-        int128 amount1Delta;
-
-        if (params.zeroForOne) {
-            // Swapping token0 for token1
-            if (params.amountSpecified < 0) {
-                // Exact input
-                amount0Delta = BeforeSwapDeltaLibrary.getSpecifiedDelta(delta);
-                amount1Delta = BeforeSwapDeltaLibrary.getUnspecifiedDelta(delta);
-            } else {
-                // Exact output
-                amount0Delta = BeforeSwapDeltaLibrary.getUnspecifiedDelta(delta);
-                amount1Delta = BeforeSwapDeltaLibrary.getSpecifiedDelta(delta);
-            }
-        } else {
-            // Swapping token1 for token0
-            if (params.amountSpecified < 0) {
-                // Exact input
-                amount1Delta = BeforeSwapDeltaLibrary.getSpecifiedDelta(delta);
-                amount0Delta = BeforeSwapDeltaLibrary.getUnspecifiedDelta(delta);
-            } else {
-                // Exact output
-                amount1Delta = BeforeSwapDeltaLibrary.getUnspecifiedDelta(delta);
-                amount0Delta = BeforeSwapDeltaLibrary.getSpecifiedDelta(delta);
-            }
-        }
-
-        // Update reserves
-        if (amount0Delta > 0) {
-            hookReserves[poolId][key.currency0] += uint256(int256(amount0Delta));
-        } else if (amount0Delta < 0) {
-            uint256 amount = uint256(int256(-amount0Delta));
-            if (hookReserves[poolId][key.currency0] < amount) revert PropHook__InsufficientReserves();
-            hookReserves[poolId][key.currency0] -= amount;
-        }
-
-        if (amount1Delta > 0) {
-            hookReserves[poolId][key.currency1] += uint256(int256(amount1Delta));
-        } else if (amount1Delta < 0) {
-            uint256 amount = uint256(int256(-amount1Delta));
-            if (hookReserves[poolId][key.currency1] < amount) revert PropHook__InsufficientReserves();
-            hookReserves[poolId][key.currency1] -= amount;
-        }
     }
 
     function _checkLaunchpad() internal view {

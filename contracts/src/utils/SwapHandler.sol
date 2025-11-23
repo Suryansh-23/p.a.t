@@ -13,17 +13,20 @@ import {SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
 import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockCallback.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 
+import {SwapActions} from "@utils/SwapActions.sol";
+
 import {BaseThresholdAdapter} from "@adapters/base/BaseThresholdAdapter.sol";
 import {ISwapHandler} from "@interfaces/ISwapHandler.sol";
 import {IPropLaunchpad} from "@interfaces/IPropLaunchpad.sol";
 import {IThresholdAdapter} from "@interfaces/IThresholdAdapter.sol";
 import {IStrategyAdapter} from "@interfaces/IStrategyAdapter.sol";
 import {IPropHook} from "@interfaces/IPropHook.sol";
+import {IRouter} from "@interfaces/IRouter.sol";
 
 /// @title SwapHandler
 /// @notice Handles batched swap execution from TEE for proprietary AMM pools
 /// @dev Receives swap batches from TEE, updates proprietary pricing params, executes swaps, checks threshold
-contract SwapHandler is IUnlockCallback, ISwapHandler {
+contract SwapHandler is SwapActions, IUnlockCallback, ISwapHandler {
     using PoolIdLibrary for PoolKey;
     using SafeERC20 for IERC20;
     using CurrencyLibrary for Currency;
@@ -35,14 +38,14 @@ contract SwapHandler is IUnlockCallback, ISwapHandler {
     /// @notice TEE address (authorized to post batches)
     address public immutable TEE;
 
+    /// @notice Router contract (holds user funds)
+    address public immutable propRouter;
+
     /// @notice PropHook contract
     IPropLaunchpad public immutable propLaunchpad;
 
     /// @notice PropHook contract
     IPropHook public immutable propHook;
-
-    /// @notice PoolManager contract
-    IPoolManager public immutable poolManager;
 
     ////////////////////////////////////////////////////
     ////////////////////// Events //////////////////////
@@ -65,14 +68,24 @@ contract SwapHandler is IUnlockCallback, ISwapHandler {
     /////////////////// Constructor ////////////////////
     ////////////////////////////////////////////////////
 
-    constructor(address tee, address _propLaunchpad, address _propHook, address _poolManager) {
-        require(tee != address(0), "Invalid TEE address");
+    constructor(
+        address _tee,
+        address _propLaunchpad,
+        address _propHook,
+        address _poolManager,
+        address _universalRouter,
+        address _propRouter,
+        address _permit2
+    ) SwapActions(_universalRouter, _poolManager, _permit2) {
         require(_propLaunchpad != address(0), "Invalid PropLaunchpad address");
         require(_poolManager != address(0), "Invalid PoolManager address");
+        require(_propRouter != address(0), "Invalid Router address");
 
-        TEE = tee;
+        TEE = _tee;
+        propRouter = _propRouter;
         propHook = IPropHook(_propHook);
         poolManager = IPoolManager(_poolManager);
+        propLaunchpad = IPropLaunchpad(_propLaunchpad);
     }
 
     ////////////////////////////////////////////////////
@@ -117,12 +130,6 @@ contract SwapHandler is IUnlockCallback, ISwapHandler {
         });
         poolManager.unlock(abi.encode(data));
 
-        if (config.thresholdAdapter != address(0)) {
-            //if (IThresholdAdapter(config.thresholdAdapter).theresholdReached()) {
-            //    //IThresholdAdapter(config.thresholdAdapter).rebalance();
-            //}
-        }
-
         emit BatchPosted(poolId, swaps.length, block.timestamp);
     }
 
@@ -149,15 +156,19 @@ contract SwapHandler is IUnlockCallback, ISwapHandler {
     /// @param key The pool key
     /// @param swapData The swap data
     function _executeSwap(PoolKey memory key, SwapData memory swapData) internal {
-        // Prepare swap params
-        SwapParams memory params = SwapParams({
-            zeroForOne: swapData.zeroForOne, amountSpecified: swapData.amountSpecified, sqrtPriceLimitX96: 0
-        });
+        // Pull funds from Router
+        // Get absolute amount for exact input (amountSpecified is negative)
+        uint256 amountIn =
+            swapData.amountSpecified < 0 ? uint256(-swapData.amountSpecified) : uint256(swapData.amountSpecified);
 
-        try poolManager.swap(key, params, "") {
-            // Swap successful
-            emit SwapExecutedInBatch(key.toId(), swapData.sender);
-        } catch Error(string memory reason) {}
+        // Pull funds from Router to this contract
+        IRouter(propRouter).pullFunds(key.toId(), swapData.sender, swapData.tokenIn, amountIn);
+
+        // Execute swap
+        _swapExactInputUnlockedV4(swapData, key);
+
+        // Swap successful
+        emit SwapExecutedInBatch(key.toId(), swapData.sender);
     }
 
     function _checkTEE() internal view {

@@ -26,6 +26,8 @@ contract OracleStaticSpreadAdapter is BaseStrategyAdapter {
     error OracleStaticSpreadAdapter__StalePrice();
     error OracleStaticSpreadAdapter__Unauthorized();
 
+    event ParametersUpdated(uint256 indexed oraclePrice);
+
     /// @param pythContract Address of Pyth oracle contract
     /// @param _priceFeedId Pyth price feed ID for this token pair
     /// @param _zeroForOne true if the price feed gives price of token0 in terms of token1
@@ -42,15 +44,9 @@ contract OracleStaticSpreadAdapter is BaseStrategyAdapter {
     /// @dev zeroForOne = false: user sells token1, buys token0 → receives BID price (lower)
     /// @return finalPrice Price scaled by 1e18
     function price(ISwapHandler.SwapData calldata _swapData) external override returns (uint256 finalPrice) {
-        PythStructs.Price memory pythPrice = pyth.getPriceNoOlderThan(priceFeedId, 60);
+        PythStructs.Price memory pythPrice = pyth.getPriceNoOlderThan(priceFeedId, 10000000);
 
-        // Convert Pyth price to 1e18 scale
-        uint256 oraclePrice = _convertPythPrice(pythPrice);
-
-        // Decode spread from parameters
-        uint256 spreadBps = abi.decode(parameters, (uint256));
-
-        (uint256 bidPrice, uint256 askPrice) = getBidAskPrices();
+        (, uint256 bidPrice, uint256 askPrice) = getBidAskPrices();
 
         // Calculate bid/ask based on swap direction
         if (_swapData.zeroForOne) {
@@ -77,20 +73,19 @@ contract OracleStaticSpreadAdapter is BaseStrategyAdapter {
     function update(bytes calldata _params) public override {
         if (msg.sender != address(swapHandler)) revert OracleStaticSpreadAdapter__Unauthorized();
         parameters = _params;
+
+        (uint256 oraclePrice,,) = getBidAskPrices();
+
+        emit ParametersUpdated(oraclePrice);
     }
 
-    /// @notice Get current spread in BPS
-    /// @return spreadBps Current spread in basis points
     function getCurrentSpread() external view returns (uint256 spreadBps) {
         spreadBps = abi.decode(parameters, (uint256));
     }
 
-    /// @notice Get bid and ask prices
-    /// @return bidPrice Bid price (what user receives when selling token1)
-    /// @return askPrice Ask price (what user pays when buying token1)
-    function getBidAskPrices() public view returns (uint256 bidPrice, uint256 askPrice) {
-        PythStructs.Price memory pythPrice = pyth.getPriceNoOlderThan(priceFeedId, 60);
-        uint256 oraclePrice = _convertPythPrice(pythPrice);
+    function getBidAskPrices() public view returns (uint256 oraclePrice, uint256 bidPrice, uint256 askPrice) {
+        PythStructs.Price memory pythPrice = pyth.getPriceNoOlderThan(priceFeedId, 10000000);
+        oraclePrice = _convertPythPrice(pythPrice);
 
         uint256 spreadBps = abi.decode(parameters, (uint256));
 

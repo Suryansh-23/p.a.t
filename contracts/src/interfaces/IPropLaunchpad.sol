@@ -37,4 +37,5 @@ interface IPropLaunchpad {
     }
 
     function getLaunchConfig(PoolId poolId) external view returns (LaunchConfig memory);
+    function getPoolKey(PoolId poolId) external view returns (PoolKey memory);
 }
