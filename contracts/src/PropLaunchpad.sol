@@ -115,11 +115,6 @@ contract PropLaunchpad is Ownable, IUnlockCallback, IPropLaunchpad {
 
         IPoolManager(POOL_MANAGER).initialize(key, 79228162514264337593543950336); // sqrtPriceX96 for 1:1 price
 
-        if (_launchConfig.token0 != address(0)) {
-            IERC20(_launchConfig.token0).safeTransferFrom(msg.sender, address(this), _launchConfig.token0SeedAmt);
-        }
-        IERC20(_launchConfig.token1).safeTransferFrom(msg.sender, address(this), _launchConfig.token1SeedAmt);
-
         propHook.configurePool(key, _launchConfig.strategyAdapter, _launchConfig.thresholdAdapter);
 
         launchConfigs[poolId] = _launchConfig;
