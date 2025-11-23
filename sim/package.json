@@ -25,6 +25,7 @@
         "dotenv": "^17.2.3",
         "eventsource": "^2.0.2",
         "neo-blessed": "^0.2.0",
+        "viem": "^2.39.3",
         "zod": "^3.23.8"
     },
     "devDependencies": {

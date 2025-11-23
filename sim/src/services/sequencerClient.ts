@@ -2,6 +2,7 @@
  * HTTP client for communicating with sequencer service
  */
 
+import { networkLogger } from "../logger.js";
 import type { SequencerParameters } from "../types/parameters.js";
 
 export interface SequencerClientConfig {
@@ -50,6 +51,17 @@ export class SequencerClient {
       const parametersBytes = "0x" + spreadHex;
 
       const url = `${this.config.url}/update`;
+
+      networkLogger.info(
+        {
+          url,
+          poolId,
+          spreadBps,
+          parametersBytes,
+        },
+        "SequencerClient: Posting spread update"
+      );
+
       const response = await fetch(url, {
         method: "POST",
         headers: {
@@ -63,12 +75,38 @@ export class SequencerClient {
 
       if (!response.ok) {
         // Suppress errors - just return failure status
+        networkLogger.error(
+          {
+            status: response.status,
+            statusText: response.statusText,
+            poolId,
+            spreadBps,
+          },
+          "SequencerClient: HTTP error"
+        );
         return { ok: false, error: `HTTP ${response.status}` };
       }
+
+      networkLogger.success(
+        {
+          poolId,
+          spreadBps,
+          status: response.status,
+        },
+        "SequencerClient: Spread update posted successfully"
+      );
 
       return { ok: true };
     } catch (error) {
       // Suppress all errors from sequencer
+      networkLogger.error(
+        {
+          error: String(error),
+          poolId,
+          spreadBps,
+        },
+        "SequencerClient: Request failed"
+      );
       return { ok: false, error: String(error) };
     }
   }

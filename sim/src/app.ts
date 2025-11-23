@@ -9,7 +9,10 @@ import { PriceSimulator } from "./services/priceSimulator.js";
 import { PriceChart } from "./components/priceChart.js";
 import { UpdateTimeline } from "./components/updateTimeline.js";
 import { ParameterPanel } from "./components/parameterPanel.js";
+import { SwapVisualizer } from "./components/swapVisualizer.js";
 import { SequencerClient } from "./services/sequencerClient.js";
+import { SwapSimulator } from "./services/swapSimulator.js";
+import { Web3Client } from "./clients/web3Client.js";
 import { APP_NAME, KEY_BINDINGS } from "./constants.js";
 import type { AppState } from "./types/state.js";
 import { DEFAULT_PARAMETERS, UI_CONFIG } from "./config/defaults.js";
@@ -23,7 +26,10 @@ export class App {
   private priceChart?: PriceChart;
   private updateTimeline?: UpdateTimeline;
   private parameterPanelComponent?: ParameterPanel;
+  private swapVisualizer?: SwapVisualizer;
   private sequencerClient: SequencerClient;
+  private web3Client?: Web3Client;
+  private swapSimulator?: SwapSimulator;
   private state: AppState;
   private postTimer?: NodeJS.Timeout;
   private priceSubscription?: () => void;
@@ -37,6 +43,26 @@ export class App {
       url: config.sequencer.url,
       apiKey: config.sequencer.apiKey,
     });
+
+    // Initialize Web3Client and SwapSimulator if enabled
+    if (config.swap.enabled && config.blockchain.privateKey) {
+      this.web3Client = new Web3Client({
+        rpcUrl: config.blockchain.rpcUrl,
+        chainId: config.blockchain.chainId,
+        privateKey: config.blockchain.privateKey,
+      });
+      this.swapSimulator = new SwapSimulator(this.web3Client, {
+        enabled: config.swap.enabled,
+        minAmount: config.swap.minAmount,
+        maxAmount: config.swap.maxAmount,
+        minInterval: config.swap.minInterval,
+        maxInterval: config.swap.maxInterval,
+        routerAddress: config.swap.routerAddress as `0x${string}`,
+        wethAddress: config.swap.wethAddress as `0x${string}`,
+        usdcAddress: config.swap.usdcAddress as `0x${string}`,
+        hookAddress: config.swap.hookAddress as `0x${string}`,
+      });
+    }
 
     // Initialize state
     this.state = {
@@ -169,7 +195,7 @@ export class App {
       top: 0,
       left: 0,
       width: "25%",
-      height: "100%",
+      height: "60%",
       label: " {bold}Parameters{/bold} ",
       tags: true,
       border: {
@@ -182,6 +208,24 @@ export class App {
         },
         label: {
           fg: "cyan",
+        },
+      },
+    });
+
+    // Swap Activity Panel (below parameters)
+    const swapActivityPanel = blessed.box({
+      top: "60%",
+      left: 0,
+      width: "25%",
+      height: "40%",
+      tags: true,
+      border: {
+        type: "line",
+      },
+      style: {
+        fg: "white",
+        border: {
+          fg: "magenta",
         },
       },
     });
@@ -215,6 +259,9 @@ export class App {
       this.state,
       this.parameterManager
     );
+
+    // Swap activity visualizer
+    this.swapVisualizer = new SwapVisualizer(swapActivityPanel);
 
     // Price chart with spread visualization
     this.priceChart = new PriceChart(vizPanel, {
@@ -277,6 +324,7 @@ export class App {
     // Append to containers
     vizPanel.append(spreadInfo);
     mainContainer.append(parameterPanel);
+    mainContainer.append(swapActivityPanel);
     mainContainer.append(vizPanel);
 
     this.screen.append(mainContainer);
@@ -440,6 +488,38 @@ export class App {
       lines.push(`{gray-fg}Avg:{/gray-fg} ${stats.avg.toFixed(2)}`);
     }
 
+    // Swap Simulator Stats
+    if (this.swapSimulator) {
+      const swapStats = this.swapSimulator.getStats();
+      lines.push("");
+      lines.push(
+        "{gray-fg}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{/gray-fg}"
+      );
+      lines.push("");
+      lines.push(`{bold}{white-fg}Swap Simulator:{/white-fg}{/bold}`);
+      lines.push(
+        `{white-fg}Total Swaps:{/white-fg} {cyan-fg}${swapStats.totalSwaps}{/cyan-fg} {gray-fg}(✓ ${swapStats.successfulSwaps} / ✗ ${swapStats.failedSwaps}){/gray-fg}`
+      );
+      lines.push(
+        `{white-fg}Total Volume:{/white-fg} {green-fg}${parseFloat(
+          swapStats.totalVolumeWeth
+        ).toFixed(4)} WETH{/green-fg}`
+      );
+      if (swapStats.lastSwapTime && swapStats.lastSwapAmount) {
+        const lastSwapDate = new Date(swapStats.lastSwapTime);
+        const lastStatus = swapStats.lastSwapSuccess
+          ? "{green-fg}✓{/green-fg}"
+          : "{red-fg}✗{/red-fg}";
+        lines.push(
+          `{white-fg}Last Swap:{/white-fg} ${lastStatus} {yellow-fg}${parseFloat(
+            swapStats.lastSwapAmount
+          ).toFixed(
+            4
+          )} WETH{/yellow-fg} {gray-fg}at ${lastSwapDate.toLocaleTimeString()}{/gray-fg}`
+        );
+      }
+    }
+
     return lines.join("\n");
   }
 
@@ -542,6 +622,11 @@ export class App {
 
     // Start sequencer posting loop (controlled by updateFrequency)
     this.startSequencerPostingLoop();
+
+    // Start swap simulator if enabled
+    if (this.swapSimulator && config.swap.enabled) {
+      await this.swapSimulator.start();
+    }
   }
 
   /**
@@ -642,6 +727,12 @@ export class App {
       this.parameterPanelComponent.update();
     }
 
+    // Update swap visualizer with current stats
+    if (this.swapVisualizer && this.swapSimulator) {
+      const swapStats = this.swapSimulator.getStats();
+      this.swapVisualizer.updateStats(swapStats);
+    }
+
     if (data.spreadInfo) {
       data.spreadInfo.setContent(this.renderSpreadInfo());
     }
@@ -719,6 +810,11 @@ export class App {
     // Unsubscribe from Pyth price updates
     if (this.priceSubscription) {
       this.priceSubscription();
+    }
+
+    // Cleanup swap simulator
+    if (this.swapSimulator) {
+      this.swapSimulator.stop();
     }
 
     // Cleanup price simulator

@@ -51,6 +51,42 @@ const configSchema = z.object({
     volatility: z.coerce.number().min(0).default(0.5),
     drift: z.coerce.number().default(0.0),
   }),
+
+  // Blockchain settings
+  blockchain: z.object({
+    rpcUrl: z.string().url().default("https://sepolia.unichain.org"),
+    chainId: z.coerce.number().default(1301),
+    privateKey: z.string().optional(),
+  }),
+
+  // Swap simulator settings
+  swap: z.object({
+    enabled: z
+      .string()
+      .transform((val) => val.toLowerCase() === "true")
+      .pipe(z.boolean())
+      .default("false"),
+    minAmount: z.coerce.number().positive().default(0.01),
+    maxAmount: z.coerce.number().positive().default(0.1),
+    minInterval: z.coerce.number().positive().default(5000),
+    maxInterval: z.coerce.number().positive().default(30000),
+    routerAddress: z
+      .string()
+      .regex(/^0x[a-fA-F0-9]{40}$/, "Router address must be a valid address")
+      .default("0x0000000000000000000000000000000000000000"),
+    wethAddress: z
+      .string()
+      .regex(/^0x[a-fA-F0-9]{40}$/, "WETH address must be a valid address")
+      .default("0x4200000000000000000000000000000000000006"),
+    usdcAddress: z
+      .string()
+      .regex(/^0x[a-fA-F0-9]{40}$/, "USDC address must be a valid address")
+      .default("0x0000000000000000000000000000000000000000"),
+    hookAddress: z
+      .string()
+      .regex(/^0x[a-fA-F0-9]{40}$/, "Hook address must be a valid address")
+      .default("0x0000000000000000000000000000000000000000"),
+  }),
 });
 
 /**
@@ -75,6 +111,22 @@ function loadConfig() {
       initialPrice: process.env.INITIAL_PRICE,
       volatility: process.env.VOLATILITY,
       drift: process.env.DRIFT,
+    },
+    blockchain: {
+      rpcUrl: process.env.RPC_URL,
+      chainId: process.env.CHAIN_ID,
+      privateKey: process.env.PRIVATE_KEY,
+    },
+    swap: {
+      enabled: process.env.SWAP_ENABLED,
+      minAmount: process.env.SWAP_MIN_AMOUNT,
+      maxAmount: process.env.SWAP_MAX_AMOUNT,
+      minInterval: process.env.SWAP_MIN_INTERVAL,
+      maxInterval: process.env.SWAP_MAX_INTERVAL,
+      routerAddress: process.env.SWAP_ROUTER_ADDRESS,
+      wethAddress: process.env.WETH_ADDRESS,
+      usdcAddress: process.env.USDC_ADDRESS,
+      hookAddress: process.env.HOOK_ADDRESS,
     },
   };
 

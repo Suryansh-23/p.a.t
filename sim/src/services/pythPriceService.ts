@@ -5,6 +5,7 @@
 
 import { HermesClient } from "@pythnetwork/hermes-client";
 import { config } from "../config/index.js";
+import { networkLogger } from "../logger.js";
 
 export interface PythPriceUpdate {
   id: string;
@@ -77,18 +78,42 @@ export class PythPriceService {
    */
   async getLatestPrice(): Promise<NormalizedPriceData | null> {
     try {
+      networkLogger.info(
+        { feedId: this.feedId },
+        "PythPriceService: Fetching latest price"
+      );
+
       const priceUpdates = await this.client.getLatestPriceUpdates([
         this.feedId,
       ]);
 
       if (!priceUpdates?.parsed || priceUpdates.parsed.length === 0) {
+        networkLogger.warn(
+          { feedId: this.feedId },
+          "PythPriceService: No price data available"
+        );
         return null;
       }
 
       const priceData = priceUpdates.parsed[0];
-      return this.normalizePriceData(priceData);
+      const normalized = this.normalizePriceData(priceData);
+
+      networkLogger.success(
+        {
+          feedId: this.feedId,
+          price: normalized.price,
+          confidence: normalized.confidence,
+          timestamp: normalized.timestamp,
+        },
+        "PythPriceService: Latest price fetched"
+      );
+
+      return normalized;
     } catch (error) {
-      console.error("Error fetching latest price:", error);
+      networkLogger.error(
+        { error, feedId: this.feedId },
+        "PythPriceService: Error fetching latest price"
+      );
       return null;
     }
   }
@@ -98,6 +123,11 @@ export class PythPriceService {
    */
   private async startStreaming(): Promise<void> {
     try {
+      networkLogger.info(
+        { feedId: this.feedId, hermesUrl: config.pyth.hermesUrl },
+        "PythPriceService: Starting price stream"
+      );
+
       // Get the SSE stream
       this.eventSource = await this.client.getPriceUpdatesStream(
         [this.feedId],
@@ -115,22 +145,40 @@ export class PythPriceService {
             const priceData = data.parsed[0];
             const normalized = this.normalizePriceData(priceData);
 
+            networkLogger.info(
+              {
+                feedId: this.feedId,
+                price: normalized.price,
+                confidence: normalized.confidence,
+              },
+              "PythPriceService: Price update received"
+            );
+
             // Notify all subscribers
             this.callbacks.forEach((callback) => {
               try {
                 callback(normalized);
               } catch (error) {
-                console.error("Error in price update callback:", error);
+                networkLogger.error(
+                  { error },
+                  "PythPriceService: Error in price update callback"
+                );
               }
             });
           }
         } catch (error) {
-          console.error("Error parsing price update:", error);
+          networkLogger.error(
+            { error },
+            "PythPriceService: Error parsing price update"
+          );
         }
       };
 
       this.eventSource.onerror = (error: any) => {
-        console.error("EventSource error:", error);
+        networkLogger.error(
+          { error, reconnectAttempts: this.reconnectAttempts },
+          "PythPriceService: EventSource error"
+        );
         this.isConnected = false;
 
         // Attempt to reconnect with exponential backoff
@@ -139,8 +187,13 @@ export class PythPriceService {
           const delay =
             this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
 
-          console.log(
-            `Reconnecting in ${delay}ms... (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`
+          networkLogger.warn(
+            {
+              delay,
+              attempt: this.reconnectAttempts,
+              maxAttempts: this.maxReconnectAttempts,
+            },
+            "PythPriceService: Reconnecting to price stream"
           );
 
           setTimeout(() => {
@@ -148,18 +201,27 @@ export class PythPriceService {
             this.startStreaming();
           }, delay);
         } else {
-          console.error("Max reconnect attempts reached. Stopping stream.");
+          networkLogger.error(
+            { maxAttempts: this.maxReconnectAttempts },
+            "PythPriceService: Max reconnect attempts reached"
+          );
           this.stopStreaming();
         }
       };
 
       this.eventSource.onopen = () => {
-        console.log("Connected to Pyth Hermes price stream");
+        networkLogger.success(
+          { feedId: this.feedId, hermesUrl: config.pyth.hermesUrl },
+          "PythPriceService: Connected to Pyth Hermes price stream"
+        );
         this.isConnected = true;
         this.reconnectAttempts = 0; // Reset on successful connection
       };
     } catch (error) {
-      console.error("Error starting price stream:", error);
+      networkLogger.error(
+        { error, feedId: this.feedId },
+        "PythPriceService: Error starting price stream"
+      );
       this.isConnected = false;
     }
   }
