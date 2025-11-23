@@ -31,7 +31,7 @@ contract OracleStaticSpreadAdapter is BaseStrategyAdapter {
     /// @param pythContract Address of Pyth oracle contract
     /// @param _priceFeedId Pyth price feed ID for this token pair
     /// @param _zeroForOne true if the price feed gives price of token0 in terms of token1
-    constructor(address pythContract, bytes32 _priceFeedId, bool _zeroForOne, address _swapHandler) {
+    constructor(address pythContract, bytes32 _priceFeedId, bool _zeroForOne, address _swapHandler) payable {
         pyth = IPyth(pythContract);
         priceFeedId = _priceFeedId;
         zeroForOnePriceFeed = _zeroForOne;
@@ -110,4 +110,6 @@ contract OracleStaticSpreadAdapter is BaseStrategyAdapter {
         // Sanity check - price must be non-zero
         if (price_ == 0) revert OracleStaticSpreadAdapter__StalePrice();
     }
+
+    receive() external payable {}
 }
