@@ -145,35 +145,76 @@ function buildApp({ submitBatch, readiness }: HttpServerDeps): Express {
 
   let inFlight = false;
   app.post("/update", async (req: Request, res: Response) => {
+    logger.info({ body: req.body }, "POST /update: received request");
+
     const parsed = UpdateSchema.safeParse(req.body);
     if (!parsed.success) {
+      logger.warn(
+        { errors: parsed.error.issues, body: req.body },
+        "POST /update: validation failed"
+      );
       return res.status(400).json({ ok: false, errors: parsed.error.issues });
     }
 
     const { poolId, parameters } = parsed.data;
+    logger.info(
+      {
+        poolId,
+        parametersLength: parameters.length,
+        parametersPreview: parameters.slice(0, 66),
+      },
+      "POST /update: validated request"
+    );
+
     if (!hasPool(poolId as PoolId)) {
+      logger.warn({ poolId }, "POST /update: unknown poolId");
       return res.status(404).json({ ok: false, message: "Unknown poolId" });
     }
+
+    const currentQueueSize = queueSize();
     if (isQueueEmpty()) {
+      logger.info(
+        { poolId, queueSize: currentQueueSize },
+        "POST /update: queue is empty, no orders to process"
+      );
       return res.status(202).json({
         ok: true,
         message: "No swap orders queued",
       });
     }
+
     if (inFlight) {
+      logger.warn(
+        { poolId, queueSize: currentQueueSize },
+        "POST /update: batch submission already in flight"
+      );
       return res
         .status(409)
         .json({ ok: false, message: "Batch submission already running" });
     }
 
     inFlight = true;
+    logger.info(
+      { poolId, queueSize: currentQueueSize, batchSize: config.batchSize },
+      "POST /update: dequeuing batch"
+    );
+
     const drained = dequeueBatch(config.batchSize);
     if (drained.length === 0) {
       inFlight = false;
+      logger.warn(
+        { poolId, queueSize: currentQueueSize },
+        "POST /update: no orders dequeued despite non-empty queue"
+      );
       return res
         .status(202)
         .json({ ok: true, message: "No swap orders dequeued" });
     }
+
+    logger.info(
+      { poolId, orderCount: drained.length, parameters },
+      "POST /update: submitting batch"
+    );
 
     try {
       const result = await submitBatch({
@@ -181,10 +222,17 @@ function buildApp({ submitBatch, readiness }: HttpServerDeps): Express {
         parameters,
         orders: drained,
       });
+      logger.info(
+        { poolId, orderCount: drained.length, result },
+        "POST /update: batch submitted successfully"
+      );
       return res.status(200).json({ ok: true, ...result });
     } catch (err) {
       requeueFront(drained);
-      logger.error({ err }, "submitBatch failed, requeued swaps");
+      logger.error(
+        { err, poolId, orderCount: drained.length, parameters },
+        "POST /update: submitBatch failed, requeued swaps"
+      );
       return res
         .status(502)
         .json({ ok: false, message: "Failed to submit batch" });
@@ -193,12 +241,10 @@ function buildApp({ submitBatch, readiness }: HttpServerDeps): Express {
     }
   });
 
-  app.use(
-    (err: unknown, _req: Request, res: Response, _next: NextFunction) => {
-      logger.error({ err }, "Unhandled error");
-      res.status(500).json({ ok: false, message: "Internal error" });
-    }
-  );
+  app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+    logger.error({ err }, "Unhandled error");
+    res.status(500).json({ ok: false, message: "Internal error" });
+  });
 
   app.locals.startedAt = new Date().toISOString();
   return app;
