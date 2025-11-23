@@ -1,9 +1,8 @@
-import type { Chain } from "wagmi"
+import type { Chain } from "viem"
 
 export const uniChainSepolia: Chain = {
   id: 1301,
   name: "UniChain Sepolia",
-  network: "unichain-sepolia",
   nativeCurrency: {
     name: "Ethereum",
     symbol: "ETH",

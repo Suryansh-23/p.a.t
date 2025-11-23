@@ -14,6 +14,13 @@ import { WagmiProvider } from 'wagmi'
 const queryClient = new QueryClient()
 
 export function WalletProvider({ children }: { children: ReactNode }) {
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  if (!mounted) return null
 
   return (
     <WagmiProvider config={config}>
