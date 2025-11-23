@@ -36,20 +36,18 @@ export async function initBatchSubmitter(): Promise<SubmitBatchFn> {
       const txHash = await walletClient.writeContract({
         abi: batcherAbi,
         address: config.batchTargetAddress as Hex,
-        functionName: "submitBatch",
+        functionName: "postBatch",
         account,
         chain: customChain,
         args: [
           poolId,
-          parameters,
+          parameters as Hex,
           orders.map((order) => ({
-            swapId: order.swapId,
             sender: order.sender,
             zeroForOne: order.zeroForOne,
             amountSpecified: order.amountSpecified,
-            txHash: order.metadata.txHash,
-            blockNumber: order.metadata.blockNumber,
-            logIndex: order.metadata.logIndex,
+            tokenIn: order.tokenIn,
+            tokenOut: order.tokenOut,
           })),
         ],
       });

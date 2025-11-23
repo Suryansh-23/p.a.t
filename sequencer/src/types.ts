@@ -32,6 +32,8 @@ export interface SwapOrder {
   sender: HexString;
   zeroForOne: boolean;
   amountSpecified: bigint;
+  tokenIn: HexString;
+  tokenOut: HexString;
   metadata: {
     blockNumber: bigint;
     logIndex: number;

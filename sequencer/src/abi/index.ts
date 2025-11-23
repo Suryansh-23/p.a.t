@@ -12,28 +12,7 @@ export const poolManagerAbi = parseAbi([
   "event SwapRequested(bytes32 indexed poolId, address sender, bool zeroForOne, int256 amountSpecified)",
 ]);
 
-export const batcherAbi = [
-  {
-    type: "function",
-    name: "submitBatch",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "poolId", type: "bytes32" },
-      { name: "parameters", type: "string" },
-      {
-        name: "orders",
-        type: "tuple[]",
-        components: [
-          { name: "swapId", type: "bytes32" },
-          { name: "sender", type: "address" },
-          { name: "zeroForOne", type: "bool" },
-          { name: "amountSpecified", type: "int256" },
-          { name: "txHash", type: "bytes32" },
-          { name: "blockNumber", type: "uint64" },
-          { name: "logIndex", type: "uint32" },
-        ],
-      },
-    ],
-    outputs: [],
-  },
-] as const;
+export const batcherAbi = parseAbi([
+  "function postBatch(bytes32 poolId, bytes calldata strategyUpdateParams, SwapData[] calldata swaps) external",
+  "struct SwapData { address sender; bool zeroForOne; int256 amountSpecified; address tokenIn; address tokenOut; }",
+]);

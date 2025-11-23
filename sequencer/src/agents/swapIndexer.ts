@@ -3,7 +3,11 @@ import { poolManagerAbi } from "../abi/index.js";
 import { config } from "../config/index.js";
 import { getHttpClient, getWebSocketClient } from "../clients/viem.js";
 import { logger } from "../logger.js";
-import { hasPool, setLastIndexedBlock } from "../state/pools.js";
+import {
+  hasPool,
+  setLastIndexedBlock,
+  getPoolMetadata,
+} from "../state/pools.js";
 import { enqueueSwap, isQueueEmpty, queueSize } from "../state/queue.js";
 import type { SwapOrder } from "../types.js";
 
@@ -121,14 +125,33 @@ function handleSwap(log: SwapLog) {
     return;
   }
 
+  const poolMeta = getPoolMetadata(poolId);
+  if (!poolMeta?.launchConfig) {
+    logger.warn(
+      { poolId, txHash: log.transactionHash },
+      "Pool metadata missing for swap"
+    );
+    return;
+  }
+
   const sender = (log.args?.sender ??
     "0x0000000000000000000000000000000000000000") as Hex;
+  const zeroForOne = log.args?.zeroForOne ?? false;
+
+  // Determine tokenIn and tokenOut based on swap direction
+  const token0 = poolMeta.launchConfig.token0 as Hex;
+  const token1 = poolMeta.launchConfig.token1 as Hex;
+  const tokenIn = zeroForOne ? token0 : token1;
+  const tokenOut = zeroForOne ? token1 : token0;
+
   const order: SwapOrder = {
     poolId,
     swapId: (log.transactionHash ?? poolId) as Hex,
     sender,
-    zeroForOne: log.args?.zeroForOne ?? false,
+    zeroForOne,
     amountSpecified: log.args?.amountSpecified ?? 0n,
+    tokenIn,
+    tokenOut,
     metadata: {
       blockNumber: log.blockNumber ?? 0n,
       logIndex: log.logIndex ?? 0,
