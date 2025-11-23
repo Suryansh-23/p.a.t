@@ -261,7 +261,7 @@ contract PropLaunchpadTest is Test {
 
         // This executes the batch through SwapHandler
         // PropHook recognizes msg.sender == swapHandler and executes
-        swapHandler.postBatch(poolId, strategyUpdateParams, batch);
+        swapHandler.postBatch(poolId, abi.encode(strategyUpdateParams, new bytes[](0)), batch);
 
         vm.stopPrank();
 
@@ -349,7 +349,7 @@ contract PropLaunchpadTest is Test {
 
         bytes memory strategyParams = abi.encode(uint256(50)); // 50 bps spread
 
-        swapHandler.postBatch(poolId, strategyParams, batch);
+        swapHandler.postBatch(poolId, abi.encode(strategyParams, new bytes[](0)), batch);
 
         vm.stopPrank();
 

@@ -44,8 +44,6 @@ contract OracleStaticSpreadAdapter is BaseStrategyAdapter {
     /// @dev zeroForOne = false: user sells token1, buys token0 → receives BID price (lower)
     /// @return finalPrice Price scaled by 1e18
     function price(ISwapHandler.SwapData calldata _swapData) external override returns (uint256 finalPrice) {
-        PythStructs.Price memory pythPrice = pyth.getPriceNoOlderThan(priceFeedId, 10000000);
-
         (, uint256 bidPrice, uint256 askPrice) = getBidAskPrices();
 
         // Calculate bid/ask based on swap direction
@@ -56,7 +54,7 @@ contract OracleStaticSpreadAdapter is BaseStrategyAdapter {
                 finalPrice = askPrice;
             } else {
                 // bid price
-                finalPrice = 1 / askPrice;
+                finalPrice = bidPrice;
             }
         } else {
             if (zeroForOnePriceFeed) {
@@ -64,15 +62,19 @@ contract OracleStaticSpreadAdapter is BaseStrategyAdapter {
                 finalPrice = bidPrice;
             } else {
                 // ask price
+                finalPrice = askPrice;
             }
         }
     }
 
     /// @notice Update the spread parameter
     /// @param _params Encoded uint256 spreadBps
-    function update(bytes calldata _params) public override {
+    function update(bytes calldata _params, bytes[] calldata _priceUpdate) public payable override {
         if (msg.sender != address(swapHandler)) revert OracleStaticSpreadAdapter__Unauthorized();
         parameters = _params;
+
+        uint256 fee = pyth.getUpdateFee(_priceUpdate);
+        pyth.updatePriceFeeds{value: fee}(_priceUpdate);
 
         (uint256 oraclePrice,,) = getBidAskPrices();
 
@@ -84,7 +86,7 @@ contract OracleStaticSpreadAdapter is BaseStrategyAdapter {
     }
 
     function getBidAskPrices() public view returns (uint256 oraclePrice, uint256 bidPrice, uint256 askPrice) {
-        PythStructs.Price memory pythPrice = pyth.getPriceNoOlderThan(priceFeedId, 10000000);
+        PythStructs.Price memory pythPrice = pyth.getPriceNoOlderThan(priceFeedId, 60);
         oraclePrice = _convertPythPrice(pythPrice);
 
         uint256 spreadBps = abi.decode(parameters, (uint256));

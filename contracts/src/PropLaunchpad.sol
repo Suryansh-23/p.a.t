@@ -113,7 +113,7 @@ contract PropLaunchpad is Ownable, IUnlockCallback, IPropLaunchpad {
             revert PropLaunchpad__PoolAlreadyExists();
         }
 
-        IPoolManager(POOL_MANAGER).initialize(key, 79228162514264337593543950336); // sqrtPriceX96 for 1:1 price
+        IPoolManager(POOL_MANAGER).initialize(key, 7922816251426433759354395);
 
         propHook.configurePool(key, _launchConfig.strategyAdapter, _launchConfig.thresholdAdapter);
 

@@ -36,7 +36,7 @@ contract SwapHandler is SwapActions, IUnlockCallback, ISwapHandler {
     ////////////////////////////////////////////////////
 
     /// @notice TEE address (authorized to post batches)
-    address public immutable TEE;
+    address public TEE;
 
     /// @notice Router contract (holds user funds)
     address public immutable propRouter;
@@ -101,6 +101,10 @@ contract SwapHandler is SwapActions, IUnlockCallback, ISwapHandler {
     /////////////// External Functions /////////////////
     ////////////////////////////////////////////////////
 
+    function setTEE(address _tee) external {
+        TEE = _tee;
+    }
+
     /// @notice Post a batch of swaps from TEE
     /// @dev This is the main entry point called by TEE after accumulating swap requests
     /// @param poolId The pool ID to execute swaps on
@@ -113,8 +117,10 @@ contract SwapHandler is SwapActions, IUnlockCallback, ISwapHandler {
 
         if (bytes(config.poolName).length == 0) revert SwapHandler__PoolNotRegistered();
 
-        if (strategyUpdateParams.length > 0) {
-            IStrategyAdapter(propLaunchpad.getLaunchConfig(poolId).strategyAdapter).update(strategyUpdateParams);
+        (bytes memory strategyParams, bytes[] memory priceUpdate) = abi.decode(strategyUpdateParams, (bytes, bytes[]));
+
+        if (strategyParams.length > 0) {
+            IStrategyAdapter(propLaunchpad.getLaunchConfig(poolId).strategyAdapter).update(strategyParams, priceUpdate);
             emit StrategyUpdated(poolId, strategyUpdateParams);
         }
 
