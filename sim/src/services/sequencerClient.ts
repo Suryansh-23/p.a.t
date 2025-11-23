@@ -5,8 +5,7 @@
 import type { SequencerParameters } from "../types/parameters.js";
 
 export interface SequencerClientConfig {
-  host: string;
-  port: number;
+  url: string;
   apiKey?: string;
 }
 
@@ -50,7 +49,7 @@ export class SequencerClient {
       const spreadHex = spreadUint256.toString(16).padStart(64, "0");
       const parametersBytes = "0x" + spreadHex;
 
-      const url = `http://${this.config.host}:${this.config.port}/update`;
+      const url = `${this.config.url}/update`;
       const response = await fetch(url, {
         method: "POST",
         headers: {

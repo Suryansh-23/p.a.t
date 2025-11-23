@@ -15,8 +15,7 @@ dotenv.config();
 const configSchema = z.object({
   // Sequencer settings
   sequencer: z.object({
-    host: z.string().default("localhost"),
-    port: z.coerce.number().default(3000),
+    url: z.string().url().default("http://localhost:3000"),
     poolId: z
       .string()
       .default(
@@ -60,8 +59,7 @@ const configSchema = z.object({
 function loadConfig() {
   const raw = {
     sequencer: {
-      host: process.env.SEQUENCER_HOST,
-      port: process.env.SEQUENCER_PORT,
+      url: process.env.SEQUENCER_URL,
       poolId: process.env.POOL_ID,
       apiKey: process.env.SEQUENCER_API_KEY,
     },

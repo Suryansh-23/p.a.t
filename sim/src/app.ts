@@ -34,8 +34,7 @@ export class App {
     this.parameterManager = new ParameterManager();
     this.priceSimulator = new PriceSimulator();
     this.sequencerClient = new SequencerClient({
-      host: config.sequencer.host,
-      port: config.sequencer.port,
+      url: config.sequencer.url,
       apiKey: config.sequencer.apiKey,
     });
 
@@ -299,11 +298,7 @@ export class App {
    * Reset parameters to defaults
    */
   private resetParameters(): void {
-    this.state.parameters = {
-      updateFrequency: 2000,
-      spreadRange: { min: 1, max: 10 },
-      correlationFactor: 0.7,
-    };
+    this.state.parameters = DEFAULT_PARAMETERS;
     this.parameterManager.updateParameters(this.state.parameters);
     this.updateUI();
   }

@@ -47,15 +47,6 @@ export interface SpreadDataPoint {
   spreadPercent: number;
 }
 
-export const DEFAULT_PARAMETERS: SequencerParameters = {
-  updateFrequency: 2000, // 2 seconds
-  spreadRange: {
-    min: 4, // 0.04% (4 bps)
-    max: 10, // 0.10% (10 bps)
-  },
-  correlationFactor: 0.7,
-};
-
 export const PARAMETER_LIMITS = {
   updateFrequency: {
     min: 150, // 150 milliseconds
