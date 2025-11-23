@@ -7,9 +7,11 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Loader2, ExternalLink, Globe, ArrowDownUp, Sparkles, Copy } from "lucide-react"
-import { useAccount, useReadContract, usePublicClient } from "wagmi"
-import { formatUnits } from "viem"
+import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from "wagmi"
+import { formatUnits, parseUnits } from "viem"
 import { erc20Abi } from "@/utils/abi/erc20"
+import { swapRouterAbi } from "@/utils/abi/swapRouter"
+import { SWAP_ROUTER_ADDRESS, PROP_HOOK_ADDRESS } from "@/utils/addresses"
 
 type LaunchConfig = {
   token0: string
@@ -58,6 +60,19 @@ export default function PoolDetailPage() {
   const [toAmount, setToAmount] = useState("")
   const [isSwapReversed, setIsSwapReversed] = useState(false)
   const [copiedValue, setCopiedValue] = useState<string | null>(null)
+  const [isSwapping, setIsSwapping] = useState(false)
+
+  // Swap contract interaction
+  const { writeContract, data: swapHash, error: swapError, isPending: isWritePending } = useWriteContract()
+  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
+    hash: swapHash,
+  })
+
+  // Approval contract interaction
+  const { writeContract: writeApproval, data: approvalHash, isPending: isApproving } = useWriteContract()
+  const { isSuccess: isApprovalConfirmed } = useWaitForTransactionReceipt({
+    hash: approvalHash,
+  })
 
   // Token info for token0
   const { data: token0Symbol } = useReadContract({
@@ -99,6 +114,21 @@ export default function PoolDetailPage() {
     args: address ? [address] : undefined,
   })
 
+  // Check token allowances for swap router
+  const { data: token0Allowance, refetch: refetchToken0Allowance } = useReadContract({
+    address: pool?.launchConfig.token0 as `0x${string}` | undefined,
+    abi: erc20Abi,
+    functionName: "allowance",
+    args: address ? [address, SWAP_ROUTER_ADDRESS] : undefined,
+  })
+
+  const { data: token1Allowance, refetch: refetchToken1Allowance } = useReadContract({
+    address: pool?.launchConfig.token1 as `0x${string}` | undefined,
+    abi: erc20Abi,
+    functionName: "allowance",
+    args: address ? [address, SWAP_ROUTER_ADDRESS] : undefined,
+  })
+
   // Debug logging
   useEffect(() => {
     if (pool) {
@@ -137,6 +167,149 @@ export default function PoolDetailPage() {
       console.error("Failed to copy:", err)
     }
   }
+
+  // Handle swap execution
+  const handleSwap = async () => {
+    if (!pool || !address || !fromAmount || Number(fromAmount) <= 0) return
+
+    try {
+      setIsSwapping(true)
+
+      // Determine which token is being swapped
+      const tokenIn = isSwapReversed ? pool.launchConfig.token1 : pool.launchConfig.token0
+      const tokenOut = isSwapReversed ? pool.launchConfig.token0 : pool.launchConfig.token1
+      const decimals = isSwapReversed ? token1Decimals : token0Decimals
+      const currentAllowance = isSwapReversed ? token1Allowance : token0Allowance
+
+      if (!decimals) {
+        console.error("Token decimals not loaded")
+        setIsSwapping(false)
+        return
+      }
+
+      // Parse the amount to wei
+      const amountIn = parseUnits(fromAmount, decimals)
+
+      // Check if tokenIn is not native ETH (address(0) or null)
+      const isNativeETH = tokenIn === "0x0000000000000000000000000000000000000000" || !tokenIn
+      
+      if (!isNativeETH) {
+        // If allowance is insufficient, approve first
+        if (!currentAllowance || currentAllowance < amountIn) {
+          console.log("Approving token spend...")
+          
+          // Approve the swap router to spend tokens
+          await writeApproval({
+            address: tokenIn as `0x${string}`,
+            abi: erc20Abi,
+            functionName: "approve",
+            args: [SWAP_ROUTER_ADDRESS, amountIn],
+          })
+
+          // Wait for approval to be confirmed before continuing
+          // The useEffect will handle the actual swap after approval
+          return
+        }
+      }
+
+      // Construct PoolKey struct
+      const poolKey = {
+        currency0: pool.launchConfig.token0 as `0x${string}`,
+        currency1: pool.launchConfig.token1 as `0x${string}`,
+        fee: 0,
+        tickSpacing: 1,
+        hooks: PROP_HOOK_ADDRESS, // Using PropHook address
+      }
+
+      console.log("Executing swap with params:", {
+        poolKey,
+        tokenIn,
+        tokenOut,
+        amountIn: amountIn.toString(),
+      })
+
+      // Execute the swap
+      await writeContract({
+        address: SWAP_ROUTER_ADDRESS,
+        abi: swapRouterAbi,
+        functionName: "swapExactInput",
+        args: [poolKey, tokenIn as `0x${string}`, tokenOut as `0x${string}`, amountIn],
+        // If tokenIn is native ETH, include value
+        value: isNativeETH ? amountIn : BigInt(0),
+      })
+    } catch (error) {
+      console.error("Swap error:", error)
+      setIsSwapping(false)
+    }
+  }
+
+  // Execute swap after approval is confirmed
+  useEffect(() => {
+    if (isApprovalConfirmed && isSwapping) {
+      console.log("Approval confirmed, executing swap...")
+      
+      // Refetch allowances
+      if (isSwapReversed) {
+        refetchToken1Allowance()
+      } else {
+        refetchToken0Allowance()
+      }
+      
+      const executeSwap = async () => {
+        if (!pool || !address || !fromAmount) return
+
+        try {
+          const tokenIn = isSwapReversed ? pool.launchConfig.token1 : pool.launchConfig.token0
+          const tokenOut = isSwapReversed ? pool.launchConfig.token0 : pool.launchConfig.token1
+          const decimals = isSwapReversed ? token1Decimals : token0Decimals
+          
+          if (!decimals) return
+
+          const amountIn = parseUnits(fromAmount, decimals)
+          const isNativeETH = tokenIn === "0x0000000000000000000000000000000000000000" || !tokenIn
+
+          const poolKey = {
+            currency0: pool.launchConfig.token0 as `0x${string}`,
+            currency1: pool.launchConfig.token1 as `0x${string}`,
+            fee: 0,
+            tickSpacing: 1,
+            hooks: PROP_HOOK_ADDRESS,
+          }
+
+          await writeContract({
+            address: SWAP_ROUTER_ADDRESS,
+            abi: swapRouterAbi,
+            functionName: "swapExactInput",
+            args: [poolKey, tokenIn as `0x${string}`, tokenOut as `0x${string}`, amountIn],
+            value: isNativeETH ? amountIn : BigInt(0),
+          })
+        } catch (error) {
+          console.error("Swap execution error:", error)
+          setIsSwapping(false)
+        }
+      }
+
+      executeSwap()
+    }
+  }, [isApprovalConfirmed])
+
+  // Reset swap state on successful transaction
+  useEffect(() => {
+    if (isConfirmed) {
+      setFromAmount("")
+      setToAmount("")
+      setIsSwapping(false)
+      console.log("Swap confirmed! Transaction hash:", swapHash)
+    }
+  }, [isConfirmed, swapHash])
+
+  // Handle swap errors
+  useEffect(() => {
+    if (swapError) {
+      console.error("Swap transaction error:", swapError)
+      setIsSwapping(false)
+    }
+  }, [swapError])
 
   useEffect(() => {
     const fetchPool = async () => {
@@ -330,11 +503,68 @@ export default function PoolDetailPage() {
 
               {/* Swap Button */}
               <Button
-                className="w-full h-14 bg-primary hover:bg-primary/90 text-white font-semibold text-lg rounded-lg"
-                disabled={!fromAmount || Number(fromAmount) <= 0}
+                className="w-full h-14 bg-[#9C6EE6] hover:bg-[#8659d4] text-white font-semibold text-lg rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={!fromAmount || Number(fromAmount) <= 0 || isSwapping || isConfirming || isApproving || !address}
+                onClick={handleSwap}
               >
-                {!fromAmount || Number(fromAmount) <= 0 ? "Enter an amount" : "Swap"}
+                {!address
+                  ? "Connect Wallet"
+                  : isApproving
+                  ? "Approving..."
+                  : isSwapping || isConfirming
+                  ? "Swapping..."
+                  : !fromAmount || Number(fromAmount) <= 0
+                  ? "Enter an amount"
+                  : (() => {
+                      // Check if approval is needed
+                      const tokenIn = isSwapReversed ? pool?.launchConfig.token1 : pool?.launchConfig.token0
+                      const isNativeETH = tokenIn === "0x0000000000000000000000000000000000000000" || !tokenIn
+                      const decimals = isSwapReversed ? token1Decimals : token0Decimals
+                      const currentAllowance = isSwapReversed ? token1Allowance : token0Allowance
+                      
+                      if (!isNativeETH && decimals && fromAmount) {
+                        const amountIn = parseUnits(fromAmount, decimals)
+                        if (!currentAllowance || currentAllowance < amountIn) {
+                          return "Approve"
+                        }
+                      }
+                      return "Swap"
+                    })()}
               </Button>
+
+              {/* Transaction Status */}
+              {isApproving && (
+                <div className="flex items-center justify-center gap-2 text-sm text-white/60">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Approving token...</span>
+                </div>
+              )}
+              {isConfirming && (
+                <div className="flex items-center justify-center gap-2 text-sm text-white/60">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Confirming transaction...</span>
+                </div>
+              )}
+              {isConfirmed && swapHash && (
+                <div className="rounded-lg bg-green-500/10 border border-green-500/20 p-3 text-sm text-green-400">
+                  <div className="flex items-center gap-2">
+                    <span>✓ Swap successful!</span>
+                    <a
+                      href={`https://sepolia.uniscan.xyz/tx/${swapHash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline hover:text-green-300"
+                    >
+                      View transaction
+                    </a>
+                  </div>
+                </div>
+              )}
+              {swapError && (
+                <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-3 text-sm text-red-400">
+                  Error: {swapError.message}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

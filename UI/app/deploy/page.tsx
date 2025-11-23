@@ -73,7 +73,7 @@ contract VolumeWeightedAdapter {
 }
 
 const STRATEGIES = [
-  { id: "presetA", title: "Volume Weighted Adapter", address: "0x0b1FD5508D5409A946E0f81D9abB52A3BDA733dE" },
+  { id: "presetA", title: "Volume Weighted Adapter", address: "0x0945853a656cf332fD74610d69ef433E79eA722e" },
   { id: "custom", title: "Bring your own adapter" },
 ]
 
