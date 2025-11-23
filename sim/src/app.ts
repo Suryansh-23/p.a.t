@@ -169,7 +169,7 @@ export class App {
     const parameterPanel = blessed.box({
       top: 0,
       left: 0,
-      width: "30%",
+      width: "25%",
       height: "100%",
       label: " {bold}Parameters{/bold} ",
       tags: true,
@@ -190,8 +190,8 @@ export class App {
     // Right panel - Visualization
     const vizPanel = blessed.box({
       top: 0,
-      left: "30%",
-      width: "70%",
+      left: "25%",
+      width: "75%",
       height: "100%",
       label: " {bold}Price & Spread Visualization{/bold} ",
       tags: true,
@@ -222,14 +222,14 @@ export class App {
       top: 1,
       left: 1,
       width: "100%-2",
-      height: "40%-1",
+      height: "55%-1",
       showSpreadBands: true,
       maxDataPoints: 100,
     });
 
     // Update timeline below price chart
     this.updateTimeline = new UpdateTimeline(vizPanel, {
-      top: "40%",
+      top: "55%",
       left: 1,
       width: "100%-2",
       height: 4,
@@ -238,10 +238,10 @@ export class App {
 
     // Current spread info box
     const spreadInfo = blessed.box({
-      top: "40%+4",
+      top: "55%+4",
       left: 1,
       width: "100%-2",
-      height: "60%-5",
+      height: "45%-5",
       label: " {bold}Current Spread Info{/bold} ",
       tags: true,
       border: {
