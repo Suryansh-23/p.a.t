@@ -4,6 +4,7 @@ import express, {
   type Request,
   type Response,
 } from "express";
+import cors from "cors";
 import pinoHttp from "pino-http";
 import { z } from "zod";
 import type { Server } from "node:http";
@@ -70,6 +71,17 @@ export async function startHttpServer(
 
 function buildApp({ submitBatch, readiness }: HttpServerDeps): Express {
   const app = express();
+
+  // Enable CORS for all routes
+  app.use(
+    cors({
+      origin: "*", // Allow all origins - configure this based on your security needs
+      methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+      allowedHeaders: ["Content-Type", "Authorization"],
+      credentials: false,
+    })
+  );
+
   type PinoHttpFn = typeof import("pino-http").default;
   const httpLogger = (pinoHttp as unknown as PinoHttpFn)({
     logger,

@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@oasisprotocol/rofl-client": "^0.1.1",
+    "cors": "^2.8.5",
     "denque": "^2.1.0",
     "dotenv": "^17.2.3",
     "express": "^4.19.2",
@@ -24,6 +25,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
     "@types/express": "^4.17.21",
     "@types/node": "^24.6.1",
     "tsx": "^4.20.6",
