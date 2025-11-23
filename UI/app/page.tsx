@@ -1,4 +1,5 @@
 import { Navigation } from "@/components/navigation"
+import FaultyTerminal from "@/components/FaultyTerminal"
 
 const reasons = [
   {
@@ -21,14 +22,37 @@ export default function HomePage() {
       <Navigation />
 
       {/* Hero */}
-      <section className="flex min-h-screen flex-col items-center justify-center px-6 text-center">
-        <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Prop AMMs</p>
-        <h1 className="mt-6 max-w-3xl text-balance text-4xl font-semibold sm:text-5xl">
-          Proprietary Automated Market Makers using TEEs.
-        </h1>
-        <p className="mt-4 max-w-2xl text-pretty text-sm text-muted-foreground sm:text-base">
-          Seal pricing logic inside trusted hardware and stream only the proofs you need.
-        </p>
+      <section className="relative flex min-h-screen flex-col items-center justify-center px-6 text-center">
+        {/* Background Terminal Effect */}
+        <div className="absolute inset-0 z-0" style={{ opacity: 0.3 }}>
+          <FaultyTerminal
+            scale={1.5}
+            gridMul={[2, 1]}
+            digitSize={1.2}
+            timeScale={1}
+            pause={false}
+            scanlineIntensity={1}
+            glitchAmount={1}
+            flickerAmount={1}
+            noiseAmp={1}
+            chromaticAberration={0}
+            dither={0}
+            curvature={0}
+            tint="#5572B4"
+            mouseReact={true}
+            mouseStrength={0.5}
+            pageLoadAnimation={false}
+            brightness={1}
+          />
+        </div>
+
+        {/* Content */}
+        <div className="relative z-10">
+          <p className="text-xs uppercase tracking-[0.4em] text-muted-foreground">Prop AMMs</p>
+          <h1 className="mt-6 max-w-3xl text-balance text-4xl font-semibold sm:text-5xl">
+            Proprietary Automated Market Makers using TEEs
+          </h1>
+        </div>
       </section>
 
       {/* Why PAT */}

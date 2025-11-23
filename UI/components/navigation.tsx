@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { useTheme } from "next-themes"
 import { useEffect, useState } from "react"
@@ -31,9 +32,15 @@ export function Navigation() {
       <div className="relative mx-auto w-full px-4 sm:px-8 lg:px-12">
         <Link
           href="/"
-          className="absolute left-6 top-1/2 -translate-y-1/2 pl-1 text-xs font-bold text-3xl tracking-[0.4em] text-white/80"
+          className="absolute left-3 top-1/2 -translate-y-1/2 pl-1"
         >
-          P.A.T.
+          <Image
+            src="/PAT.png"
+            alt="P.A.T. Logo"
+            width={120}
+            height={40}
+            className="object-contain"
+          />
         </Link>
         <div className="flex justify-center pl-150">
           <PillNav

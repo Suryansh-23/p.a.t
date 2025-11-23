@@ -53,9 +53,9 @@ export default function ExplorerPage() {
         setLoading(true)
         setError(null)
         
-        console.log("Fetching pools from:", `${SEQUENCER_API_URL}/api/pools`)
+        console.log("Fetching pools from:", `/api/pools`)
         
-        const response = await fetch(`${SEQUENCER_API_URL}/api/pools`, {
+        const response = await fetch(`/api/pools`, {
           headers: {
             'ngrok-skip-browser-warning': 'true',
             'Content-Type': 'application/json',

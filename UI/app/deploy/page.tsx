@@ -73,7 +73,7 @@ contract VolumeWeightedAdapter {
 }
 
 const STRATEGIES = [
-  { id: "presetA", title: "Volume Weighted Adapter" },
+  { id: "presetA", title: "Volume Weighted Adapter", address: "0x0b1FD5508D5409A946E0f81D9abB52A3BDA733dE" },
   { id: "custom", title: "Bring your own adapter" },
 ]
 
@@ -89,14 +89,13 @@ contract VolatilityThreshold {
 }
 
 const THRESHOLD_STRATEGIES = [
-  { id: "thresholdA", title: "Volatility Threshold" },
-  { id: "thresholdCustom", title: "Custom Threshold Module" },
+  { id: "thresholdCustom", title: "Build your own adapter (optional)" },
 ]
 
 export default function DeployPage() {
   const [currentStep, setCurrentStep] = useState(1)
   const [selectedStrategy, setSelectedStrategy] = useState("presetA")
-  const [selectedThreshold, setSelectedThreshold] = useState("thresholdA")
+  const [selectedThreshold, setSelectedThreshold] = useState("thresholdCustom")
   const [formData, setFormData] = useState({
     curator: "",
     curatorName: "",
@@ -128,7 +127,17 @@ export default function DeployPage() {
       .join("")}`
 
   const handleStrategyDeploy = async () => {
-    // Validation
+    // If using preset strategy, just set the address
+    if (selectedStrategy === "presetA") {
+      const presetAddress = STRATEGIES.find(s => s.id === "presetA")?.address
+      if (presetAddress) {
+        setFormData((prev) => ({ ...prev, strategyAdapter: presetAddress.toLowerCase() }))
+        alert(`Using preset strategy adapter at ${presetAddress}`)
+      }
+      return
+    }
+
+    // For custom strategy, deploy it
     if (!address) {
       alert("Please connect your wallet before deploying.")
       return
@@ -144,53 +153,39 @@ export default function DeployPage() {
 
     setIsDeployingStrategy(true)
     try {
-      let bytecode: string
-      let constructorArgs: `0x${string}`
-
-      // Handle custom code
-      if (selectedStrategy === "custom") {
-        const customCode = formData.customStrategyCode.trim()
-        if (!customCode) {
-          alert("Please provide your custom adapter contract code before deploying.")
-          return
-        }
-
-        // Validate the contract has required functions (just a warning, not blocking)
-        const validation = validateStrategyAdapter(customCode)
-        if (!validation.valid) {
-          console.warn(`Strategy adapter validation warning: ${validation.error}`)
-          // Show warning but don't block deployment
-          if (!confirm(`Warning: ${validation.error}\n\nDo you want to proceed with deployment anyway?`)) {
-            return
-          }
-        }
-
-        // Compile the custom contract
-        alert("Compiling your contract... This may take a few seconds.")
-        const contractName = extractContractName(customCode)
-        const result = await compileSolidityContract(customCode, contractName || undefined)
-
-        if (!result.success) {
-          const errorMsg = result.errors?.join('\n\n') || 'Unknown compilation error'
-          alert(`Compilation failed:\n\n${errorMsg}`)
-          return
-        }
-
-        if (result.warnings && result.warnings.length > 0) {
-          console.warn("Compilation warnings:", result.warnings)
-        }
-
-        bytecode = result.bytecode!
-        constructorArgs = '0x'
-      } else {
-        // Get bytecode for preset strategy
-        bytecode = getStrategyBytecode(selectedStrategy) || ''
-        if (!bytecode) {
-          alert("Strategy bytecode not found. Please select a valid preset.")
-          return
-        }
-        constructorArgs = encodeStrategyConstructorArgs()
+      const customCode = formData.customStrategyCode.trim()
+      if (!customCode) {
+        alert("Please provide your custom adapter contract code before deploying.")
+        return
       }
+
+      // Validate the contract has required functions (just a warning, not blocking)
+      const validation = validateStrategyAdapter(customCode)
+      if (!validation.valid) {
+        console.warn(`Strategy adapter validation warning: ${validation.error}`)
+        // Show warning but don't block deployment
+        if (!confirm(`Warning: ${validation.error}\n\nDo you want to proceed with deployment anyway?`)) {
+          return
+        }
+      }
+
+      // Compile the custom contract
+      alert("Compiling your contract... This may take a few seconds.")
+      const contractName = extractContractName(customCode)
+      const result = await compileSolidityContract(customCode, contractName || undefined)
+
+      if (!result.success) {
+        const errorMsg = result.errors?.join('\n\n') || 'Unknown compilation error'
+        alert(`Compilation failed:\n\n${errorMsg}`)
+        return
+      }
+
+      if (result.warnings && result.warnings.length > 0) {
+        console.warn("Compilation warnings:", result.warnings)
+      }
+
+      const bytecode = result.bytecode!
+      const constructorArgs: `0x${string}` = '0x'
 
       // Deploy the contract
       const deployedAddress = await deployContract({
@@ -211,7 +206,17 @@ export default function DeployPage() {
   }
 
   const handleThresholdDeploy = async () => {
-    // Validation
+    // Check if user provided custom code
+    const customCode = formData.customThresholdCode.trim()
+    
+    // If no custom code, set zero address (optional threshold)
+    if (!customCode) {
+      setFormData((prev) => ({ ...prev, thresholdAdapter: "0x0000000000000000000000000000000000000000" }))
+      alert("No threshold adapter provided. Using zero address (no threshold).")
+      return
+    }
+
+    // Validation for deployment
     if (!address) {
       alert("Please connect your wallet before deploying.")
       return
@@ -227,53 +232,33 @@ export default function DeployPage() {
 
     setIsDeployingThreshold(true)
     try {
-      let bytecode: string
-      let constructorArgs: `0x${string}`
-
-      // Handle custom code
-      if (selectedThreshold === "thresholdCustom") {
-        const customCode = formData.customThresholdCode.trim()
-        if (!customCode) {
-          alert("Please provide your custom threshold module code before deploying.")
+      // Validate the contract has required functions (just a warning, not blocking)
+      const validation = validateThresholdAdapter(customCode)
+      if (!validation.valid) {
+        console.warn(`Threshold adapter validation warning: ${validation.error}`)
+        // Show warning but don't block deployment
+        if (!confirm(`Warning: ${validation.error}\n\nDo you want to proceed with deployment anyway?`)) {
           return
         }
-
-        // Validate the contract has required functions (just a warning, not blocking)
-        const validation = validateThresholdAdapter(customCode)
-        if (!validation.valid) {
-          console.warn(`Threshold adapter validation warning: ${validation.error}`)
-          // Show warning but don't block deployment
-          if (!confirm(`Warning: ${validation.error}\n\nDo you want to proceed with deployment anyway?`)) {
-            return
-          }
-        }
-
-        // Compile the custom contract
-        alert("Compiling your contract... This may take a few seconds.")
-        const contractName = extractContractName(customCode)
-        const result = await compileSolidityContract(customCode, contractName || undefined)
-
-        if (!result.success) {
-          const errorMsg = result.errors?.join('\n\n') || 'Unknown compilation error'
-          alert(`Compilation failed:\n\n${errorMsg}`)
-          return
-        }
-
-        if (result.warnings && result.warnings.length > 0) {
-          console.warn("Compilation warnings:", result.warnings)
-        }
-
-        bytecode = result.bytecode!
-        constructorArgs = '0x'
-      } else {
-        // Get bytecode for preset threshold
-        bytecode = getThresholdBytecode(selectedThreshold) || ''
-        if (!bytecode) {
-          alert("Threshold bytecode not found. Please select a valid preset.")
-          return
-        }
-        constructorArgs = encodeThresholdConstructorArgs()
       }
+
+      // Compile the custom contract
+      alert("Compiling your contract... This may take a few seconds.")
+      const contractName = extractContractName(customCode)
+      const result = await compileSolidityContract(customCode, contractName || undefined)
+
+      if (!result.success) {
+        const errorMsg = result.errors?.join('\n\n') || 'Unknown compilation error'
+        alert(`Compilation failed:\n\n${errorMsg}`)
+        return
+      }
+
+      if (result.warnings && result.warnings.length > 0) {
+        console.warn("Compilation warnings:", result.warnings)
+      }
+
+      const bytecode = result.bytecode!
+      const constructorArgs: `0x${string}` = '0x'
 
       // Deploy the contract
       const deployedAddress = await deployContract({
@@ -819,12 +804,16 @@ export default function DeployPage() {
                         {isDeployingStrategy
                           ? "Deploying Strategy Adapter..."
                           : formData.strategyAdapter
-                            ? "Strategy Adapter Deployed"
-                            : "Deploy Strategy Adapter"}
+                            ? "Strategy Adapter Set"
+                            : selectedStrategy === "presetA"
+                              ? "Use Preset Strategy Adapter"
+                              : "Deploy Strategy Adapter"}
                       </Button>
                       {formData.strategyAdapter && (
                         <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-xs">
-                          <p className="text-white/60">Adapter deployed at:</p>
+                          <p className="text-white/60">
+                            {selectedStrategy === "presetA" ? "Using preset adapter at:" : "Adapter deployed at:"}
+                          </p>
                           <p className="font-mono text-white break-all">{formData.strategyAdapter}</p>
                           <p className="flex items-center gap-2 text-xs text-white mt-2">
                             <Check className="h-3 w-3 text-primary" /> Ready for next step
@@ -845,44 +834,26 @@ export default function DeployPage() {
                     <div className="space-y-4">
                       <h2 className="text-2xl font-semibold">Threshold Adapter</h2>
                       <p className="text-sm text-muted-foreground">
-                        Configure guardrails to pause or throttle activity based on custom logic.
+                        Configure guardrails to pause or throttle activity based on custom logic. This is optional - you can skip if you don't need threshold checks.
                       </p>
-                      <div className="space-y-3">
-                        {THRESHOLD_STRATEGIES.map((strategy) => (
-                          <Card
-                            key={strategy.id}
-                            className={`cursor-pointer border ${selectedThreshold === strategy.id ? "border-primary" : "border-white/10"} bg-transparent p-5`}
-                            onClick={() => setSelectedThreshold(strategy.id)}
-                          >
-                            <div className="flex items-start justify-between">
-                              <div>
-                                <h3 className="text-lg font-semibold">{strategy.title}</h3>
-                              </div>
-                              <div
-                                className={`h-4 w-4 rounded-full border ${selectedThreshold === strategy.id ? "border-primary bg-primary" : "border-white/30"}`}
-                              />
-                            </div>
-                          </Card>
-                        ))}
+                      <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                        <h3 className="text-lg font-semibold mb-2">Build Your Own (Optional)</h3>
+                        <p className="text-xs text-muted-foreground">
+                          Write your custom threshold adapter or leave empty to proceed without threshold monitoring.
+                        </p>
                       </div>
                     </div>
                   </div>
                   <div className="rounded-2xl border border-primary/30 bg-primary/5 p-6 lg:w-3/5">
-                    <h3 className="font-semibold">Threshold Module</h3>
-                    <p className="text-xs text-muted-foreground">Ensure safe execution before final launch.</p>
-                    {selectedThreshold === "thresholdCustom" ? (
-                      <textarea
-                        id="customThresholdCode"
-                        className="mt-4 h-48 w-full rounded-lg border border-white/10 bg-[#050611]/60 p-3 text-xs"
-                        placeholder="Paste your threshold adapter..."
-                        value={formData.customThresholdCode}
-                        onChange={(e) => handleInputChange("customThresholdCode", e.target.value)}
-                      />
-                    ) : (
-                      <div className="mt-4 rounded-lg border border-white/10 bg-[#050611]/60 p-4 text-xs text-muted-foreground">
-                        <pre className="overflow-x-auto whitespace-pre-wrap">{thresholdSnippet}</pre>
-                      </div>
-                    )}
+                    <h3 className="font-semibold">Threshold Module (Optional)</h3>
+                    <p className="text-xs text-muted-foreground">Add custom guardrails or skip to proceed without threshold checks.</p>
+                    <textarea
+                      id="customThresholdCode"
+                      className="mt-4 h-48 w-full rounded-lg border border-white/10 bg-[#050611]/60 p-3 text-xs"
+                      placeholder="Paste your threshold adapter (optional, leave empty to skip)..."
+                      value={formData.customThresholdCode}
+                      onChange={(e) => handleInputChange("customThresholdCode", e.target.value)}
+                    />
                     <div className="mt-4 flex flex-col gap-3">
                       <Button 
                         onClick={handleThresholdDeploy} 
@@ -893,12 +864,20 @@ export default function DeployPage() {
                         {isDeployingThreshold
                           ? "Deploying Threshold Adapter..."
                           : formData.thresholdAdapter
-                            ? "Threshold Adapter Deployed"
-                            : "Deploy Threshold Adapter"}
+                            ? formData.thresholdAdapter === "0x0000000000000000000000000000000000000000"
+                              ? "No Threshold (Skipped)"
+                              : "Threshold Adapter Deployed"
+                            : formData.customThresholdCode.trim()
+                              ? "Deploy Threshold Adapter"
+                              : "Skip Threshold (Use Zero Address)"}
                       </Button>
                       {formData.thresholdAdapter && (
                         <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-xs">
-                          <p className="text-white/60">Threshold adapter deployed at:</p>
+                          <p className="text-white/60">
+                            {formData.thresholdAdapter === "0x0000000000000000000000000000000000000000"
+                              ? "No threshold adapter (zero address):"
+                              : "Threshold adapter deployed at:"}
+                          </p>
                           <p className="font-mono text-white break-all">{formData.thresholdAdapter}</p>
                           <p className="flex items-center gap-2 text-xs text-white mt-2">
                             <Check className="h-3 w-3 text-primary" /> Ready for launch
@@ -969,19 +948,21 @@ export default function DeployPage() {
                     <div className="space-y-3 text-sm">
                       <div>
                         <span className="text-white/60">Strategy Option:</span>
-                        <p className="font-semibold mt-1 text-white">{selectedStrategy}</p>
+                        <p className="font-semibold mt-1 text-white">
+                          {selectedStrategy === "presetA" ? "Preset Volume Weighted Adapter" : "Custom Strategy Adapter"}
+                        </p>
                       </div>
                       <div>
                         <span className="text-white/60">Strategy Address:</span>
                         <p className="font-mono text-xs break-all mt-1 text-white">{formData.strategyAdapter || "Not set"}</p>
                       </div>
                       <div>
-                        <span className="text-white/60">Threshold Option:</span>
-                        <p className="font-semibold mt-1 text-white">{selectedThreshold}</p>
-                      </div>
-                      <div>
-                        <span className="text-white/60">Threshold Address:</span>
-                        <p className="font-mono text-xs break-all mt-1 text-white">{formData.thresholdAdapter || "Not set"}</p>
+                        <span className="text-white/60">Threshold Adapter:</span>
+                        <p className="font-mono text-xs break-all mt-1 text-white">
+                          {formData.thresholdAdapter === "0x0000000000000000000000000000000000000000"
+                            ? "None (Zero Address)"
+                            : formData.thresholdAdapter || "Not set"}
+                        </p>
                       </div>
                       <div>
                         <span className="text-white/60">Approvals:</span>
