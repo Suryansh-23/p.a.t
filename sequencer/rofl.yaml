@@ -17,14 +17,14 @@ artifacts:
     compose: compose.yaml
 deployments:
   default:
-    app_id: rofl1qpz05c9f80c3ql6qg8ke22gqs4wr8s7z2umns0sr
+    app_id: rofl1qzqv46xzau3d8dpfr8yzdn6hse6rymrr2vzvsrla
     network: testnet
     paratime: sapphire
     admin: tee
-    oci_repository: rofl.sh/50a66b3c-abf9-42f3-a246-0a48e7122f27:1763890641
+    oci_repository: rofl.sh/0355a8c7-1099-4457-a1ef-c6add6c48808:1763894049
     trust_root:
-      height: 29467757
-      hash: cdc2ab07ac6853cbfd5228235f2f6555defa3870ee35a6a96b029bb2715aad28
+      height: 29468391
+      hash: ea733594712ef076cdce0d5748ca168eff58608941a51855820da74196742d9e
     policy:
       quotes:
         pcs:
@@ -32,47 +32,47 @@ deployments:
           min_tcb_evaluation_data_number: 18
           tdx: {}
       enclaves:
-        - id: pOD1t9zLSNdX6+09CU0+DKyeAbQArESB9y7djU/Ix5sAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==
-        - id: EpqquKEcFSMwP36JP/FKMXwPyPHuSPUwscR7vWQdSswAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==
+        - id: rR3oHJrYzV1d0ZqtGElqCBmPgNQXo+6dEM6e/CA8Cd4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==
+        - id: 5w4cxLCogguIHvUtMf+CLmIDMJLEuafd/XoGdAnnV4IAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==
       endorsements:
         - any: {}
       fees: endorsing_node
       max_expiration: 3
     secrets:
       - name: BATCHER_PRIVATE_KEY
-        value: pGJwa1ggS/XGeG36himLTAQ/fSshp4OaRMgzRg+HgHtl+DEqgE9kbmFtZVgjl92Ip/jtuFmvzIM4G7GZuJDqI321kWuO5IeBUeCcmJcKfkNlbm9uY2VP0bO0Tq7Lr7bAJpL6m9LcZXZhbHVlWFKYkMKLYHJb9yjuUx7SzPt7Q2KX4/3BB1N/cjM19SuIEjMGuXSPoV/O8mbaALcxbB1KwUTEqh8BRmhF22/VsrjM5uR4xGlEhwDk2Ss1PORU+vxx
+        value: pGJwa1ggVCMfZwd2CQBYCJTpa+uCGRLcKwCUt9GUPqUxkmptAyRkbmFtZVgjooasSTtPVBFq0qAI8ZMaCHkJKyj/DN50P3utzV7Hi2gXMA1lbm9uY2VPlwyVRa0Mqa2uTtV1NLoPZXZhbHVlWFIZ4f4XZ1R0B1byIzXyyT1vdWOwC5L/roviELT0PA22tcifLlODUQBBsTJWVNQnrJLfZ1seRexeQ47AVdN99SHXHCDdHGGDxEHaX9kkUrAlvIF8
       - name: BATCH_SIZE
-        value: pGJwa1ggIel1teInqFHCQCCcDbL/zw9brpgnHEiOC/Yx7cd7n3VkbmFtZVgapk1NoNVqBh69ZQ0AM+Unevhi2BP3BupsUJplbm9uY2VPDtDxORds8u+9wXfhWqVwZXZhbHVlUnm5qaLPUkC1F8YFSLP7f4eWUw==
+        value: pGJwa1gg1rpIg1gQGThNJWtZ43Z0zTkseNEJ91qjLwmVP3htuTlkbmFtZVgaMZIS5dZ4vPR65enj5GjIfuFC8YdgJK1Ss+Jlbm9uY2VPy6W9/UVVraMV0jXfdW6aZXZhbHVlUhJ26M389vxDlxySfpN2+ilxTA==
       - name: BATCH_TARGET_ADDRESS
-        value: pGJwa1ggHQiOaJsAjb9x5tWO9scBKAJ8suqiuS1I5Qr5xEREPnpkbmFtZVgkSGNVx8Bn0V7sGaVYSLNVYGon/BLh5+q6bQkpKM18BZNSiFpVZW5vbmNlT171h9wU/fU8MtxY62e+c2V2YWx1ZVg6G4H+sH+kAePOEMGuNp0+MfutGJmrIAfDQ9PGB1hypS/H2YxXUVhXMOHQAJ2hlDan37bQyL1wqg0yfA==
+        value: pGJwa1ggcthIhUmAuREfKR9g7FuTUjeCZa30p9Jxj8RTjhxP6VJkbmFtZVgk5vAF1M3H+hH/jSwIKykye1URlw6zY+vi09FQZKRXtXMo5QR1ZW5vbmNlT3WA5T0q58uv3w1ZIHWCjWV2YWx1ZVg6NCYSN3b9ZUocU+6mFpkMR6BOUXS9pafUXs5pzW3A5RMyKLsnHmOk0U5sMLV6t+bwaRBqiqoUODsa6A==
       - name: CHAIN_ID
-        value: pGJwa1ggP9/j8QsYz7vWD2cpFPQ8ut8wkZ//qy7RQ3d2jiBe2HxkbmFtZVgYuZhACylZjP7kzyJ+loOxqVcfu1P7WaIlZW5vbmNlT9JLcJEIHbeIfhQjeCBWqmV2YWx1ZVRYKQg9Pm9UluC2lFjf9FpnBqxYxQ==
+        value: pGJwa1gg+eyx1pQTwOPEj2mt4NiVTPz3TwqwZBuo7Hs68JYcO2xkbmFtZVgYcuX7ch4IfSEyaKHnqMR/KlSvCCP3MK8JZW5vbmNlT/rY+JT2mtg5E/JnJWfTs2V2YWx1ZVR+VumIDGtzBF4o2H2hfuZqcw55JQ==
       - name: CHAIN_RPC_HTTP
-        value: pGJwa1ggP8cSwRyVE9bpWgAnMGMg+seWWBtbEUTWmlxATKCJVCFkbmFtZVgeBJIWV+CnTGW0TbhJxEA595WSDanyW9uOKK0gn5EdZW5vbmNlT3DQ7g82l5xPRdbpD+DkfWV2YWx1ZVhPQeHV/qLk8DJlOsUSI6Mutu0u8mBpKqEenWThWF2maATmGWkdTDvmW+fXdbjVYo9FMMg4qIpzyRmY6sHRZcYwXWDqdEm+xIVScst4gj1JyA==
+        value: pGJwa1ggR5OvuD6LeRFr/+KL5gSWgvWVj+BIchfaVC/BbVKq9TRkbmFtZVgeIweeclqExT9yLA+oHo2HZfPcSCCXAHDtaxDew4lbZW5vbmNlT9zyayYqO95uUy3U7MtjUWV2YWx1ZVhPqUTO7OIUwhsYKdGxTxLJymy8z/W51ksrzi/pbHLiVRReEiUNRqBrcUGIqLwL+Iv5pqZufiVyfn47DXZfmfMWKiSL/xUvvfMkDB4GpAf3SA==
       - name: CHAIN_RPC_HTTP_2
-        value: pGJwa1gg2D373GCQyKwgfeHEABfSFxF2+VIiVDJY4pS1P14Uhg5kbmFtZVggx9gjaCPcfEyGKMy1jxZ1McRvmJv572eRBNLFSaq4ryhlbm9uY2VPWvjzshAG8yvm807Jr7sRZXZhbHVlWFo83DhJrYmdIRqzYIGT0os8C8YkG78o+KsNGy+SKJRwz+x0ajSlHD0Ba8XqnNvFnvrztXn7O8/xLXxE6999pBNz6FeaALHg31ra7AH2nXN7wQs7eAnuUIgp8gc=
+        value: pGJwa1ggtzz2fJwpBSryC0e4N6EIqICzhyYwO22mO2pKqBOQpwdkbmFtZVgguY4RcnrlJmOYrJGtWfV4h1LIq4s17dXNW0sChsdDSNJlbm9uY2VPTvxjrGs+tbEMIpr+1rqqZXZhbHVlWFp0twK1ivhLkcfbo4IgqL/EITJS0DYoqlAj7PSbTkLh/W/+HloiaAgsCGmzHBe5jr4Ghr7jc3fF88I5sn6P3PVUc+y8dWE79/6X57EzxzaJmQfsxZy3KYGhQnk=
       - name: CHAIN_RPC_HTTP_3
-        value: pGJwa1ggr07IiMh7fQgEudhPaI70lBmUW8PoxdI53bvYpg25j11kbmFtZVgg5s/51ijEAAByzgxFOvslvWRq+i3ZiVJO/Pn9au2OPtJlbm9uY2VPNkL0c55QfFE4Lo7bLepHZXZhbHVlWCyZO5NbE37RS4ZcRRraJmlElHUvx5RePN4UwIKTtzGNp8E4tJw9b9D4cRxdSg==
+        value: pGJwa1ggBLV/Gr65rt7/Qm8p1/MhRCrD5dwo3/Lrv4CSgxSQy2xkbmFtZVggvkXdxxRYfjoHVQpmWex3eV0dXcjxJj9BeMdQnJod6ZVlbm9uY2VPZpJfo7JeOkB5iFFFoBY7ZXZhbHVlWCygx+UcA7UhkowWICKRvrq7ROKjr9qrk+tHdDOeXZvhiTzCh+Y/Bh2OayG0/A==
       - name: CHAIN_RPC_WS
-        value: pGJwa1gg/J/kmpvgybr8NJ3O5NO62H3qBY7sScBOwmAZejMOyTZkbmFtZVgc7r671D/ldxNYGXM+SuB9r74rxB8zZhN6RnQjCmVub25jZU/kbWDyiuUMKTcLgimAa2FldmFsdWVYTXQ5aqlnFM6XdSC4oa3XGvpSAzSyy98fMhPfby+qWHwJpVsVETVX7/HUVnLBVWJta2Mo+5zevFX+a651bpd2h2nWVB8olw2o1Eb5vgA/
+        value: pGJwa1gglx1fEML4GpOHgFXCuXfI/sZdOceJbLrgE1WpUDI9OQ9kbmFtZVgcWzXW2s74cZl+JMYsM2ycSvn7HvlRByv7aTsjEWVub25jZU/n1yePaIV7xB31oZWJxGJldmFsdWVYTbJocU9PQROvVaCgQPyTOlaFqu+IS24MNMHhn6xFiPuAVSSKj21dbdA3thzoS3IHXvilgnnIbYaIhw5k0JaY47VgKWRDmL550Mt6g0le
       - name: EXPRESS_HOST
-        value: pGJwa1gggdS5bVeBbWW1g3alP6p8q/8EjTTl3bnDe2Mvct7zDFdkbmFtZVgcSnYbqipM/TCyh9QygZgRNO/sEWcIicfnRpiMEWVub25jZU+8BTQ9EDho+Yu/xzBpbzFldmFsdWVXGacRqoSu4dVVRY3QhJRgWBjWkkURgPo=
+        value: pGJwa1gggEIhmQSoqXBlTrTowhKILZK+i1MIojQMQtXWKAJxXSZkbmFtZVgcnpBTRfmqWwFax0xSrj4ez7OKs6hbFJ7n+mDbuGVub25jZU+wu5oExx0yUX3GxdXd+sBldmFsdWVX783RBohJbzx5dOl4T9Cezf8gP7o1kno=
       - name: EXPRESS_PORT
-        value: pGJwa1ggJ5dTcBJPevHHUNNMy617VGb1HWRzWPsJq50YPMPm4GNkbmFtZVgc9q86PMuIe04HAgdKwSTi8Yn7kBdBOazW8JXtI2Vub25jZU/Q5mVZWxyMVkJxgBzHszpldmFsdWVUeqBBuFdsxRGEU9euE+aF9C0fOlg=
+        value: pGJwa1ggg3tHaAguiFVBCDEMc3GQuSmW6ngPRTX2uhYwY4NvFUhkbmFtZVgcBQ12iTq5rln5kkTpS4IaZ0pxIjs0RxcCSXqCdmVub25jZU8LzKlNqtAdNEA9rwb6afRldmFsdWVUtOL+fWLFjV3XAKKQYhUYRE/1sv8=
       - name: LOG_LEVEL
-        value: pGJwa1ggy4RbBSGPo+DCzLE9yWyvaNeDV2vHVS3CrYmXuF4hYV9kbmFtZVgZa3XkK1pPB0H4fj1qBaUGGOEKXjWcQ02gn2Vub25jZU+fAapQE1raks5/ZHBzkQRldmFsdWVVLleOp1H2aqypKoVK7zNiFjRpDOr5
+        value: pGJwa1ggicZlhgqF9BJDoXrHTu1l4MNka0bSjzWoXDuHuMT4LgRkbmFtZVgZvQGrKHFkruNkXr6lbi5hAgEaJmvL48S0j2Vub25jZU8jXqJcGgyIcULlL/9MrJxldmFsdWVVF4QgqbJ7XLiOqNtqXaSWkOJJ1jda
       - name: NODE_ENV
-        value: pGJwa1ggYcTSM7mQn48Rkg/GNI6fYx7VND6fW6+eZ+j4sel7LDJkbmFtZVgYOSOgXbXVkzsrQY9hEw6fPWgHnNK1BJCBZW5vbmNlT/s2F5TQFh7zUuxGk4Pw+WV2YWx1ZVgaTVrxAkDlw0Bt+u4RNboKy3maELCIKKlVxto=
+        value: pGJwa1ggVKv3kLdT4AVLwiB43fh4IOvSSops4LBZyava+bf1U35kbmFtZVgY3mdDftNNjcvRndQQxz+iNJ0M2aqUGYUYZW5vbmNlT/3/o6UyGVCgLej7w2SAf2V2YWx1ZVgaP+iYbNmAGh13whx4LtVCWhgk2399qcjpHxs=
       - name: POOL_LAUNCH_ADDRESS
-        value: pGJwa1ggkOTtlO6tCw+rnf2yIKYdL8MDXIlTv6OFAyGAvzk9uzhkbmFtZVgj80F7PJ+rgClV8wtptikEIq8Dmz9bLKHfoB3dFittoZg0Sk1lbm9uY2VPPlwybu1zjoZzvyfLzNTjZXZhbHVlWDr2F1xvB/8Qma3ZGiVASLVX6drzuvd3xgCYbNCoBeiLp+IFhjaqx62KOBdT0U4BIHX56TLQDwadWBvN
+        value: pGJwa1ggrpWBXJWYsLNMeqJFoG+HivrOtBHTj9M/2S29ZACigRJkbmFtZVgjPshKDneb2q4WJKsVY3tkI4Fsb3wkv4lyIyZGu4D82zdJS/xlbm9uY2VPzoj2Au6FldrOFdWQCdbnZXZhbHVlWDr5s5KKHZmpNFWqq4dLrI91p1/z+npfxz+ybhirXHwA+Ps8pfPOr+FGQFM3fDVcb8Gc0mCAykvcBY9x
       - name: POOL_LAUNCH_START_BLOCK
-        value: pGJwa1ggdpK4ePGzOq+3QCtB6vspLxKsQ699jlr2wXKCIJYxYVpkbmFtZVgnR48tw1sMbz/teUDVve+jB/wPoP0pTYAsSkMjyN5xqPL8BRCwfpEdZW5vbmNlTyeYmJjpZpi0ezVHY1ju52V2YWx1ZVI4bBaCZazWT2S3e6Eq6GT0Zts=
+        value: pGJwa1gg2yghEO3PD4OUy9sMx4hluuk+09XOqO+aaQNXefC0gXNkbmFtZVgn0UpRdcO3IEGB1yTDVETgZBWon/ybkFaJ1DfJrDQG4pPQyxsILyr7ZW5vbmNlT3kprF06T66zaG39qicl02V2YWx1ZVI5XuC89pLSvQbEoONwsGO76as=
       - name: POOL_MANAGER_ADDRESS
-        value: pGJwa1ggCMlzkNbC8W8FVuYn+NqGKSrYG0zr5DIjo2nLygmPiV9kbmFtZVgkaPe9YOz+KG+MMWxySiRJblPGpGsV4iLDB4eDp4rIStc2+GPhZW5vbmNlT98q5VufZ00eEkd/sdjBeWV2YWx1ZVg6c7kXVpVXMojq6m2gdW0O+G12GXyCnepkgCa4fOcZyzU6b27PwR+jc80TMCPA+7K2EE+e7lvYinP+gg==
+        value: pGJwa1ggA5L44Z1XDjy72zhj0JaDSqOceae5kCGlLlnRhlhPplNkbmFtZVgkeb2KMJvVcbGUHArYTZZhTtg0EzQMymgcXl7z4RzyJOZ6qvKUZW5vbmNlT+lrGV7B/UVF16TDqnyOcWV2YWx1ZVg6Q2AzFBexFYcgG3ItzjIy/xF85IXIjjzaSok6mFn48EZ2lX2CLmlvyvx2hZW0nKzc8E85JCEbY93Sxg==
       - name: POOL_MANAGER_START_BLOCK
-        value: pGJwa1ggoOyGMXBIHlO8PMh4AdVncPFvgrvGVjBOfMDL8luepnlkbmFtZVgo1hTrBGtMoTOqZRULPRTjg3guVRYq3NzmFxorDWOpsxHpX/W3CKKQoWVub25jZU+KY+CgBOlXfnBKwK5e95JldmFsdWVS4ZEz5mC9kOxpMtn1rKVqaxBO
+        value: pGJwa1ggvYryjL53s84TB7vBBGSBlLnG2cOi4PIrd+mIqQhErTxkbmFtZVgoOEudBWP0H5v1Dd45hrz+HQ8cDbbdo+KP+S8M8yved7ad5lrglenNtGVub25jZU+ZiOSPIkgf/YpUA0yJS1ZldmFsdWVSf6IX8Dg75BmTHB0ZUkadgZen
     machines:
       default:
         provider: oasis1qp2ens0hsp7gh23wajxa4hpetkdek3swyyulyrmz
         offer: playground_short
-        id: "0000000000000475"
+        id: "0000000000000476"
