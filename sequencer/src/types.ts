@@ -2,6 +2,7 @@ export type HexString = `0x${string}`;
 export type PoolId = HexString;
 
 export interface CuratorInfo {
+  curator: HexString;
   name: string;
   website: string;
 }
@@ -11,10 +12,9 @@ export interface LaunchConfig {
   token1: HexString;
   token0SeedAmt: bigint;
   token1SeedAmt: bigint;
-  fee: number;
   strategyAdapter: HexString;
   thresholdAdapter: HexString;
-  curator: HexString;
+  poolName: string;
   curatorInfo: CuratorInfo;
 }
 

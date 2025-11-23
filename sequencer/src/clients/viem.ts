@@ -1,9 +1,4 @@
-import {
-  createPublicClient,
-  createWalletClient,
-  http,
-  webSocket,
-} from "viem";
+import { createPublicClient, createWalletClient, http, webSocket } from "viem";
 import type { Account, Chain, PublicClient, WalletClient } from "viem";
 import { config } from "../config/index.js";
 
@@ -32,6 +27,7 @@ export const customChain: Chain = {
 
 let cachedHttpClient: PublicClient | undefined;
 let cachedWebSocketClient: PublicClient | undefined;
+let cachedHttpClients: PublicClient[] | undefined;
 
 export function getHttpClient(): PublicClient {
   if (cachedHttpClient) return cachedHttpClient;
@@ -41,6 +37,24 @@ export function getHttpClient(): PublicClient {
     pollingInterval: 4_000,
   });
   return cachedHttpClient;
+}
+
+export function getHttpClients(): PublicClient[] {
+  if (cachedHttpClients) return cachedHttpClients;
+
+  const urls = [config.rpcHttpUrl];
+  if (config.rpcHttpUrl2) urls.push(config.rpcHttpUrl2);
+  if (config.rpcHttpUrl3) urls.push(config.rpcHttpUrl3);
+
+  cachedHttpClients = urls.map((url) =>
+    createPublicClient({
+      chain: customChain,
+      transport: http(url),
+      pollingInterval: 4_000,
+    })
+  );
+
+  return cachedHttpClients;
 }
 
 export function getWebSocketClient(): PublicClient {

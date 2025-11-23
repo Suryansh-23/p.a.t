@@ -21,8 +21,8 @@ const logLevelEnum = z.enum([
   "silent",
 ]);
 
-const startBlockSchema = z
-  .coerce.bigint()
+const startBlockSchema = z.coerce
+  .bigint()
   .refine(
     (value) => value >= -1n,
     "Start block must be -1 (start from latest) or >= 0"
@@ -34,6 +34,8 @@ const EnvSchema = z.object({
   LOG_LEVEL: logLevelEnum.default("info"),
   CHAIN_ID: z.coerce.number().int().positive(),
   CHAIN_RPC_HTTP: z.string().url(),
+  CHAIN_RPC_HTTP_2: z.string().url().optional(),
+  CHAIN_RPC_HTTP_3: z.string().url().optional(),
   CHAIN_RPC_WS: z.string().url().optional(),
   POOL_LAUNCH_ADDRESS: hexAddress,
   POOL_LAUNCH_START_BLOCK: startBlockSchema,
@@ -60,6 +62,8 @@ export const config = {
   chainId: parsed.data.CHAIN_ID,
   rpcHttpUrl: parsed.data.CHAIN_RPC_HTTP,
   rpcWsUrl: parsed.data.CHAIN_RPC_WS ?? null,
+  rpcHttpUrl2: parsed.data.CHAIN_RPC_HTTP_2 ?? null,
+  rpcHttpUrl3: parsed.data.CHAIN_RPC_HTTP_3 ?? null,
   poolLaunchAddress: parsed.data.POOL_LAUNCH_ADDRESS,
   poolLaunchStartBlock: parsed.data.POOL_LAUNCH_START_BLOCK,
   poolManagerAddress: parsed.data.POOL_MANAGER_ADDRESS,

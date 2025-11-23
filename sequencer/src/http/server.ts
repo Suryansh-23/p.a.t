@@ -126,8 +126,28 @@ function buildApp({ submitBatch, readiness }: HttpServerDeps): Express {
     if (!readiness()) {
       return res.status(503).json({ ok: false, message: "Indexer warming up" });
     }
-    const pools = getPoolConfigMap();
-    return res.json({ ok: true, pools, total: Object.keys(pools).length });
+    try {
+      const pools = getPoolConfigMap();
+      // Convert bigint values to strings for JSON serialization
+      const serializedPools: Record<string, any> = {};
+      for (const [poolId, config] of Object.entries(pools)) {
+        serializedPools[poolId] = {
+          ...config,
+          token0SeedAmt: config.token0SeedAmt?.toString(),
+          token1SeedAmt: config.token1SeedAmt?.toString(),
+        };
+      }
+      return res.json({
+        ok: true,
+        pools: serializedPools,
+        total: Object.keys(pools).length,
+      });
+    } catch (error) {
+      logger.error({ error }, "Error fetching pools");
+      return res
+        .status(500)
+        .json({ ok: false, message: "Failed to fetch pools" });
+    }
   });
 
   app.get("/api/pools/:poolId", (req: Request, res: Response) => {
@@ -145,10 +165,20 @@ function buildApp({ submitBatch, readiness }: HttpServerDeps): Express {
         .status(404)
         .json({ ok: false, message: "Unknown poolId", poolId });
     }
+
+    // Serialize bigint values for JSON
+    const serializedConfig = metadata.launchConfig
+      ? {
+          ...metadata.launchConfig,
+          token0SeedAmt: metadata.launchConfig.token0SeedAmt?.toString(),
+          token1SeedAmt: metadata.launchConfig.token1SeedAmt?.toString(),
+        }
+      : {};
+
     return res.json({
       ok: true,
       poolId,
-      launchConfig: metadata.launchConfig,
+      launchConfig: serializedConfig,
       launchedAt: metadata.launchedAt,
       blockNumber: metadata.blockNumber.toString(),
       txHash: metadata.txHash,
