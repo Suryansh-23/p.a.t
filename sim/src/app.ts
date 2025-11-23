@@ -35,6 +35,7 @@ export class App {
   private priceSubscription?: () => void;
   private updateCount: number = 0;
   private lastUpdateTime?: Date;
+  private latestPriceUpdateData?: string[]; // Store latest Pyth price update data
 
   constructor() {
     this.parameterManager = new ParameterManager();
@@ -594,8 +595,15 @@ export class App {
     if (mode === "live") {
       // Subscribe to Pyth price updates (real-time SSE stream)
       this.priceSubscription = this.priceSimulator.subscribe(
-        (price: number, timestamp: number, confidence?: number) => {
+        (
+          price: number,
+          timestamp: number,
+          confidence?: number,
+          priceUpdateData?: string[]
+        ) => {
           if (!this.state.isPaused) {
+            // Store the latest Pyth price update data
+            this.latestPriceUpdateData = priceUpdateData;
             this.handlePriceUpdate(price, timestamp, confidence);
           }
         }
@@ -646,7 +654,8 @@ export class App {
         // Post to sequencer (errors are suppressed internally)
         const result = await this.sequencerClient.postSpreadUpdate(
           config.sequencer.poolId,
-          spreadBps
+          spreadBps,
+          this.latestPriceUpdateData
         );
 
         // Update connection status based on result

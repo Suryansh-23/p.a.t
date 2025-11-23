@@ -2,6 +2,7 @@
  * HTTP client for communicating with sequencer service
  */
 
+import { encodeAbiParameters } from "viem";
 import { networkLogger } from "../logger.js";
 import type { SequencerParameters } from "../types/parameters.js";
 
@@ -38,17 +39,32 @@ export class SequencerClient {
    * Push spread update to sequencer
    * @param poolId The pool ID (hex string with 0x prefix)
    * @param spreadBps The spread in basis points
+   * @param priceUpdateData Optional Pyth price update data (hex strings)
    */
   async postSpreadUpdate(
     poolId: string,
-    spreadBps: number
+    spreadBps: number,
+    priceUpdateData?: string[]
   ): Promise<{ ok: boolean; error?: string }> {
     try {
-      // Convert spread (bps) to Solidity uint256 bytes representation
-      // Spread in bps as uint256, then encode as bytes
+      // Convert spread (bps) to bytes
       const spreadUint256 = BigInt(Math.round(spreadBps));
-      const spreadHex = spreadUint256.toString(16).padStart(64, "0");
-      const parametersBytes = "0x" + spreadHex;
+      const spreadBytes = `0x${spreadUint256.toString(16).padStart(64, "0")}`;
+
+      // Prepare Pyth price update data (default to empty array if not provided)
+      const pythUpdates = (priceUpdateData || []).map(
+        (hex) => hex as `0x${string}`
+      );
+
+      // Encode composite parameter: abi.encode(bytes, bytes[])
+      // This matches Solidity's: abi.decode(strategyUpdateParams, (bytes, bytes[]))
+      const parametersBytes = encodeAbiParameters(
+        [
+          { type: "bytes", name: "spreadData" },
+          { type: "bytes[]", name: "priceUpdates" },
+        ],
+        [spreadBytes as `0x${string}`, pythUpdates]
+      );
 
       const url = `${this.config.url}/update`;
 
@@ -57,7 +73,8 @@ export class SequencerClient {
           url,
           poolId,
           spreadBps,
-          parametersBytes,
+          pythUpdateCount: pythUpdates.length,
+          parametersBytes: parametersBytes.slice(0, 66) + "...",
         },
         "SequencerClient: Posting spread update"
       );
@@ -91,6 +108,7 @@ export class SequencerClient {
         {
           poolId,
           spreadBps,
+          pythUpdateCount: pythUpdates.length,
           status: response.status,
         },
         "SequencerClient: Spread update posted successfully"

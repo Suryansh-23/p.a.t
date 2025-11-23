@@ -28,6 +28,7 @@ export interface NormalizedPriceData {
   confidence: number; // Confidence interval as a number
   timestamp: number; // Publish time in milliseconds
   expo: number; // Original exponent
+  priceUpdateData?: string[]; // Binary price update data from Pyth (hex strings with 0x prefix)
 }
 
 export type PriceUpdateCallback = (data: NormalizedPriceData) => void;
@@ -145,11 +146,24 @@ export class PythPriceService {
             const priceData = data.parsed[0];
             const normalized = this.normalizePriceData(priceData);
 
+            // Extract binary price update data if available
+            if (
+              data.binary &&
+              data.binary.data &&
+              Array.isArray(data.binary.data)
+            ) {
+              // Convert hex strings to 0x-prefixed format
+              normalized.priceUpdateData = data.binary.data.map((hex: string) =>
+                hex.startsWith("0x") ? hex : `0x${hex}`
+              );
+            }
+
             networkLogger.info(
               {
                 feedId: this.feedId,
                 price: normalized.price,
                 confidence: normalized.confidence,
+                priceUpdateCount: normalized.priceUpdateData?.length || 0,
               },
               "PythPriceService: Price update received"
             );

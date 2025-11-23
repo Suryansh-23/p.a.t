@@ -1,11 +1,24 @@
 services:
   sequencer:
-    image: ${ROFL_APP_IMAGE:-sequencer:local}
+    image: docker.io/suryansh23/p.a.t-rofl:0.1.0
     restart: unless-stopped
-    env_file:
-      - .env
+    ports:
+      - "8080:8080"
     environment:
-      NODE_ENV: production
-      BATCHER_PRIVATE_KEY: ${BATCHER_PRIVATE_KEY}
+      - NODE_ENV:${NODE_ENV:-production:-}
+      - LOG_LEVEL:${LOG_LEVEL:-trace:-}
+      - CHAIN_ID:${CHAIN_ID:-1301}
+      - CHAIN_RPC_HTTP:${CHAIN_RPC_HTTP:-}
+      - CHAIN_RPC_HTTP_2:${CHAIN_RPC_HTTP_2:-}
+      - CHAIN_RPC_HTTP_3:${CHAIN_RPC_HTTP_3:-https://sepolia.unichain.org}
+      - CHAIN_RPC_WS:${CHAIN_RPC_WS:-}
+      - POOL_LAUNCH_ADDRESS:${POOL_LAUNCH_ADDRESS:-}
+      - POOL_LAUNCH_START_BLOCK:${POOL_LAUNCH_START_BLOCK:-}
+      - POOL_MANAGER_ADDRESS:${POOL_MANAGER_ADDRESS:-}
+      - POOL_MANAGER_START_BLOCK:${POOL_MANAGER_START_BLOCK:--1}
+      - BATCH_TARGET_ADDRESS:${BATCH_TARGET_ADDRESS:-}
+      - BATCH_SIZE:${BATCH_SIZE:-10}
+      - BATCHER_PRIVATE_KEY:${BATCHER_PRIVATE_KEY:-}
+      - EXPRESS_PORT:${EXPRESS_PORT:-8080}
     volumes:
       - /run/rofl-appd.sock:/run/rofl-appd.sock

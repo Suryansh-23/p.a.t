@@ -39,7 +39,12 @@ export class PriceSimulator {
    * @returns Unsubscribe function
    */
   subscribe(
-    callback: (price: number, timestamp: number, confidence?: number) => void
+    callback: (
+      price: number,
+      timestamp: number,
+      confidence?: number,
+      priceUpdateData?: string[]
+    ) => void
   ): () => void {
     if (this.useMockData) {
       // For mock data, we'll use a timer-based approach
@@ -50,7 +55,12 @@ export class PriceSimulator {
       return this.pythService.subscribe((data: NormalizedPriceData) => {
         this.currentPrice = data.price;
         this.currentConfidence = data.confidence;
-        callback(data.price, data.timestamp, data.confidence);
+        callback(
+          data.price,
+          data.timestamp,
+          data.confidence,
+          data.priceUpdateData
+        );
       });
     }
     return () => {};

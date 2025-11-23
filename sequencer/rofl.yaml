@@ -1,4 +1,4 @@
-name: sequencer-rofl
+name: sequencer
 version: 0.1.0
 tee: tdx
 kind: container
@@ -13,18 +13,18 @@ artifacts:
   kernel: https://github.com/oasisprotocol/oasis-boot/releases/download/v0.6.2/stage1.bin#e5d4d654ca1fa2c388bf64b23fc6e67815893fc7cb8b7cfee253d87963f54973
   stage2: https://github.com/oasisprotocol/oasis-boot/releases/download/v0.6.2/stage2-podman.tar.bz2#b2ea2a0ca769b6b2d64e3f0c577ee9c08f0bb81a6e33ed5b15b2a7e50ef9a09f
   container:
-    runtime: https://github.com/oasisprotocol/oasis-sdk/releases/download/rofl-containers%2Fv0.8.0/rofl-containers#08eb5bbe5df26af276d9a72e9fd7353b3a90b7d27e1cf33e276a82dfd551eec6
+    runtime: https://github.com/oasisprotocol/oasis-sdk/releases/download/rofl-containers%2Fv0.8.4/rofl-containers#2cd0468ec2ea5f4264f47f728c5c3b0fcce93f5a537e568f8cbab8a53b526ae7
     compose: compose.yaml
 deployments:
   default:
-    app_id: rofl1qq609tgegxycq6h5vn5ee6cwf5kejv9xhqnprgvx
+    app_id: rofl1qpz05c9f80c3ql6qg8ke22gqs4wr8s7z2umns0sr
     network: testnet
     paratime: sapphire
-    admin: metamask
-    oci_repository: rofl.sh/5ea3c580-9310-4381-8aba-aa4e022764c8:1759416425
+    admin: tee
+    oci_repository: rofl.sh/50a66b3c-abf9-42f3-a246-0a48e7122f27:1763890641
     trust_root:
-      height: 28684455
-      hash: f29651a5d6ec863413747eb30ee166952a4a45178534c4044cf8991f17eb8623
+      height: 29467757
+      hash: cdc2ab07ac6853cbfd5228235f2f6555defa3870ee35a6a96b029bb2715aad28
     policy:
       quotes:
         pcs:
@@ -32,14 +32,47 @@ deployments:
           min_tcb_evaluation_data_number: 18
           tdx: {}
       enclaves:
-        - id: uoCrxc2JQuT15Mm7GbRLihw/fwGyGXw7PuQ0MidfDPkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==
-        - id: YE3vfSRUcf6qDAbTsX+NwtUITOQVFHXrhKq8hw4SBecAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==
+        - id: pOD1t9zLSNdX6+09CU0+DKyeAbQArESB9y7djU/Ix5sAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==
+        - id: EpqquKEcFSMwP36JP/FKMXwPyPHuSPUwscR7vWQdSswAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==
       endorsements:
         - any: {}
       fees: endorsing_node
       max_expiration: 3
+    secrets:
+      - name: BATCHER_PRIVATE_KEY
+        value: pGJwa1ggS/XGeG36himLTAQ/fSshp4OaRMgzRg+HgHtl+DEqgE9kbmFtZVgjl92Ip/jtuFmvzIM4G7GZuJDqI321kWuO5IeBUeCcmJcKfkNlbm9uY2VP0bO0Tq7Lr7bAJpL6m9LcZXZhbHVlWFKYkMKLYHJb9yjuUx7SzPt7Q2KX4/3BB1N/cjM19SuIEjMGuXSPoV/O8mbaALcxbB1KwUTEqh8BRmhF22/VsrjM5uR4xGlEhwDk2Ss1PORU+vxx
+      - name: BATCH_SIZE
+        value: pGJwa1ggIel1teInqFHCQCCcDbL/zw9brpgnHEiOC/Yx7cd7n3VkbmFtZVgapk1NoNVqBh69ZQ0AM+Unevhi2BP3BupsUJplbm9uY2VPDtDxORds8u+9wXfhWqVwZXZhbHVlUnm5qaLPUkC1F8YFSLP7f4eWUw==
+      - name: BATCH_TARGET_ADDRESS
+        value: pGJwa1ggHQiOaJsAjb9x5tWO9scBKAJ8suqiuS1I5Qr5xEREPnpkbmFtZVgkSGNVx8Bn0V7sGaVYSLNVYGon/BLh5+q6bQkpKM18BZNSiFpVZW5vbmNlT171h9wU/fU8MtxY62e+c2V2YWx1ZVg6G4H+sH+kAePOEMGuNp0+MfutGJmrIAfDQ9PGB1hypS/H2YxXUVhXMOHQAJ2hlDan37bQyL1wqg0yfA==
+      - name: CHAIN_ID
+        value: pGJwa1ggP9/j8QsYz7vWD2cpFPQ8ut8wkZ//qy7RQ3d2jiBe2HxkbmFtZVgYuZhACylZjP7kzyJ+loOxqVcfu1P7WaIlZW5vbmNlT9JLcJEIHbeIfhQjeCBWqmV2YWx1ZVRYKQg9Pm9UluC2lFjf9FpnBqxYxQ==
+      - name: CHAIN_RPC_HTTP
+        value: pGJwa1ggP8cSwRyVE9bpWgAnMGMg+seWWBtbEUTWmlxATKCJVCFkbmFtZVgeBJIWV+CnTGW0TbhJxEA595WSDanyW9uOKK0gn5EdZW5vbmNlT3DQ7g82l5xPRdbpD+DkfWV2YWx1ZVhPQeHV/qLk8DJlOsUSI6Mutu0u8mBpKqEenWThWF2maATmGWkdTDvmW+fXdbjVYo9FMMg4qIpzyRmY6sHRZcYwXWDqdEm+xIVScst4gj1JyA==
+      - name: CHAIN_RPC_HTTP_2
+        value: pGJwa1gg2D373GCQyKwgfeHEABfSFxF2+VIiVDJY4pS1P14Uhg5kbmFtZVggx9gjaCPcfEyGKMy1jxZ1McRvmJv572eRBNLFSaq4ryhlbm9uY2VPWvjzshAG8yvm807Jr7sRZXZhbHVlWFo83DhJrYmdIRqzYIGT0os8C8YkG78o+KsNGy+SKJRwz+x0ajSlHD0Ba8XqnNvFnvrztXn7O8/xLXxE6999pBNz6FeaALHg31ra7AH2nXN7wQs7eAnuUIgp8gc=
+      - name: CHAIN_RPC_HTTP_3
+        value: pGJwa1ggr07IiMh7fQgEudhPaI70lBmUW8PoxdI53bvYpg25j11kbmFtZVgg5s/51ijEAAByzgxFOvslvWRq+i3ZiVJO/Pn9au2OPtJlbm9uY2VPNkL0c55QfFE4Lo7bLepHZXZhbHVlWCyZO5NbE37RS4ZcRRraJmlElHUvx5RePN4UwIKTtzGNp8E4tJw9b9D4cRxdSg==
+      - name: CHAIN_RPC_WS
+        value: pGJwa1gg/J/kmpvgybr8NJ3O5NO62H3qBY7sScBOwmAZejMOyTZkbmFtZVgc7r671D/ldxNYGXM+SuB9r74rxB8zZhN6RnQjCmVub25jZU/kbWDyiuUMKTcLgimAa2FldmFsdWVYTXQ5aqlnFM6XdSC4oa3XGvpSAzSyy98fMhPfby+qWHwJpVsVETVX7/HUVnLBVWJta2Mo+5zevFX+a651bpd2h2nWVB8olw2o1Eb5vgA/
+      - name: EXPRESS_HOST
+        value: pGJwa1gggdS5bVeBbWW1g3alP6p8q/8EjTTl3bnDe2Mvct7zDFdkbmFtZVgcSnYbqipM/TCyh9QygZgRNO/sEWcIicfnRpiMEWVub25jZU+8BTQ9EDho+Yu/xzBpbzFldmFsdWVXGacRqoSu4dVVRY3QhJRgWBjWkkURgPo=
+      - name: EXPRESS_PORT
+        value: pGJwa1ggJ5dTcBJPevHHUNNMy617VGb1HWRzWPsJq50YPMPm4GNkbmFtZVgc9q86PMuIe04HAgdKwSTi8Yn7kBdBOazW8JXtI2Vub25jZU/Q5mVZWxyMVkJxgBzHszpldmFsdWVUeqBBuFdsxRGEU9euE+aF9C0fOlg=
+      - name: LOG_LEVEL
+        value: pGJwa1ggy4RbBSGPo+DCzLE9yWyvaNeDV2vHVS3CrYmXuF4hYV9kbmFtZVgZa3XkK1pPB0H4fj1qBaUGGOEKXjWcQ02gn2Vub25jZU+fAapQE1raks5/ZHBzkQRldmFsdWVVLleOp1H2aqypKoVK7zNiFjRpDOr5
+      - name: NODE_ENV
+        value: pGJwa1ggYcTSM7mQn48Rkg/GNI6fYx7VND6fW6+eZ+j4sel7LDJkbmFtZVgYOSOgXbXVkzsrQY9hEw6fPWgHnNK1BJCBZW5vbmNlT/s2F5TQFh7zUuxGk4Pw+WV2YWx1ZVgaTVrxAkDlw0Bt+u4RNboKy3maELCIKKlVxto=
+      - name: POOL_LAUNCH_ADDRESS
+        value: pGJwa1ggkOTtlO6tCw+rnf2yIKYdL8MDXIlTv6OFAyGAvzk9uzhkbmFtZVgj80F7PJ+rgClV8wtptikEIq8Dmz9bLKHfoB3dFittoZg0Sk1lbm9uY2VPPlwybu1zjoZzvyfLzNTjZXZhbHVlWDr2F1xvB/8Qma3ZGiVASLVX6drzuvd3xgCYbNCoBeiLp+IFhjaqx62KOBdT0U4BIHX56TLQDwadWBvN
+      - name: POOL_LAUNCH_START_BLOCK
+        value: pGJwa1ggdpK4ePGzOq+3QCtB6vspLxKsQ699jlr2wXKCIJYxYVpkbmFtZVgnR48tw1sMbz/teUDVve+jB/wPoP0pTYAsSkMjyN5xqPL8BRCwfpEdZW5vbmNlTyeYmJjpZpi0ezVHY1ju52V2YWx1ZVI4bBaCZazWT2S3e6Eq6GT0Zts=
+      - name: POOL_MANAGER_ADDRESS
+        value: pGJwa1ggCMlzkNbC8W8FVuYn+NqGKSrYG0zr5DIjo2nLygmPiV9kbmFtZVgkaPe9YOz+KG+MMWxySiRJblPGpGsV4iLDB4eDp4rIStc2+GPhZW5vbmNlT98q5VufZ00eEkd/sdjBeWV2YWx1ZVg6c7kXVpVXMojq6m2gdW0O+G12GXyCnepkgCa4fOcZyzU6b27PwR+jc80TMCPA+7K2EE+e7lvYinP+gg==
+      - name: POOL_MANAGER_START_BLOCK
+        value: pGJwa1ggoOyGMXBIHlO8PMh4AdVncPFvgrvGVjBOfMDL8luepnlkbmFtZVgo1hTrBGtMoTOqZRULPRTjg3guVRYq3NzmFxorDWOpsxHpX/W3CKKQoWVub25jZU+KY+CgBOlXfnBKwK5e95JldmFsdWVS4ZEz5mC9kOxpMtn1rKVqaxBO
     machines:
       default:
         provider: oasis1qp2ens0hsp7gh23wajxa4hpetkdek3swyyulyrmz
         offer: playground_short
-        id: "0000000000000337"
+        id: "0000000000000475"
